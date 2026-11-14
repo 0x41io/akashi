@@ -1,0 +1,4 @@
+# Akashi imports Monomi as a library. Monomi brings its own dependencies
+# (requests, dnspython, ...). Pinned to the release whose contract test
+# (monomi/tests/test_contract.py) locks the scan fields Akashi reads.
+monomi @ git+https://github.com/0x41io/monomi@v1.15.0

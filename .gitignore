@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Secrets - never commit
+.env
+.env.*
+*.key
+
+# Akashi data (proof history, logs) and scans under test
+scans/
+*.json
+!tests/**/*.json
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

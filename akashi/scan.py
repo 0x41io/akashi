@@ -1,0 +1,85 @@
+"""
+Read a saved Monomi scan and pick the leads Akashi can prove.
+
+Akashi never re-derives what Monomi decided. It reads the typed fields Monomi
+writes since v1.15.0 (``rule`` and ``targets`` on every item) and refuses any
+scan too old to have them, instead of guessing from the text.
+"""
+
+import json
+
+from monomi import common
+
+# The oldest Monomi a scan may come from: v1.15.0 is the first with rule +
+# targets on every finding (monomi/tests/test_contract.py locks them).
+MIN_MONOMI = (1, 15, 0)
+
+# The rules Akashi v0.1 knows how to prove. Everything else in a scan is left
+# alone (reported as "not handled yet"), never guessed at.
+PROVABLE = ("takeover", "takeover_unknown", "email_spoofing", "around_cdn")
+
+
+class ScanError(Exception):
+    """A saved scan can't be used: unreadable, not a Monomi scan, or too old."""
+
+
+def load_scan(path: str) -> dict:
+    """The parsed scan at ``path``, or a ScanError that says what's wrong."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        raise ScanError(f"no scan file at {path}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise ScanError(f"{path} isn't valid JSON (is it a Monomi --json scan?)")
+    if not isinstance(data, dict):
+        raise ScanError(f"{path} isn't a Monomi scan (expected an object at the top)")
+    return data
+
+
+def scan_version(scan: dict) -> tuple[int, int, int]:
+    """The scan's Monomi version, or a ScanError if it's missing or too old.
+
+    A scan from before v1.15.0 has no ``monomi_version`` (or a version below
+    the minimum), so it lacks the rule/targets fields Akashi reads. Comparing
+    is done as numbers, not text, by monomi.common.scan_version.
+    """
+    version = common.scan_version(scan)
+    if version is None:
+        raise ScanError(
+            "this scan has no monomi_version, so it predates the fields Akashi "
+            "needs. Re-run it with Monomi "
+            + ".".join(map(str, MIN_MONOMI)) + " or newer.")
+    if version < MIN_MONOMI:
+        raise ScanError(
+            f"this scan is from Monomi {'.'.join(map(str, version))}, but Akashi "
+            f"needs {'.'.join(map(str, MIN_MONOMI))} or newer. Re-run the scan.")
+    return version
+
+
+def items(scan: dict):
+    """Every finding and lead in the scan, each tagged with where it sits.
+
+    Monomi puts confirmed-twice takeovers and email spoofing in ``paths``
+    (they passed the gate) and the rest in ``leads``; Akashi re-proves both,
+    since a scan can be days old. Yields (where, item) with where in
+    {"path", "lead"}.
+    """
+    built = scan.get("paths") or {}
+    for where, group in (("path", "paths"), ("lead", "leads")):
+        for item in built.get(group) or []:
+            yield where, item
+
+
+def provable(scan: dict) -> list[dict]:
+    """The scan's findings and leads whose rule Akashi v0.1 can prove.
+
+    Each is returned as-is (it already carries ``id``, ``rule`` and
+    ``targets``), with ``where`` added so the caller knows if Monomi had it as
+    a path or a lead.
+    """
+    out = []
+    for where, item in items(scan):
+        if item.get("rule") in PROVABLE:
+            out.append({**item, "where": where})
+    return out
