@@ -14,6 +14,7 @@ from akashi import __version__, plan, state, verify
 from akashi.research import ResearchError
 from akashi.research import load as load_research
 from akashi.scan import PROVABLE, ScanError, lead_key, load_scan, provable, scan_version, unhandled
+from akashi.ui import banner
 
 
 def _load_scope(path: str):
@@ -306,6 +307,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    print(banner())
     return args.func(args)
 
 
