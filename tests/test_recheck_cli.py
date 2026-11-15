@@ -95,3 +95,55 @@ def test_verify_records_the_stable_key(monkeypatch, tmp_path):
     _verify_to_confirm(monkeypatch, tmp_path)
     keys = {r["key"] for r in state.history("takeover.test")}
     assert "takeover:old-app.takeover.test>old-app-zz9.azurewebsites.net" in keys
+
+
+def _cdn_send(origin):
+    """A fake network for around_cdn: the CDN always serves the site; the
+    origin answers with whatever `origin` returns."""
+    from akashi.proofs import around_cdn
+
+    def send(url, headers, verify):
+        if "Host" in headers:
+            return origin(url)
+        return around_cdn.Fetched(url, 200, {}, "<title>Origins test site</title>hello")
+    return send
+
+
+def _confirm_around_cdn(monkeypatch, tmp_path):
+    from akashi.proofs import around_cdn
+    monkeypatch.setattr(around_cdn, "_send", _cdn_send(
+        lambda url: around_cdn.Fetched(url, 200, {}, "<title>Origins test site</title>hello")))
+    scan = conftest.cdn_and_email_scan(tmp_path)
+    scope = conftest.write_scope(tmp_path, "origins.test\n*.origins.test\n")
+    answer(monkeypatch, "yes")
+    cli.main(["verify", scan, "--scope", scope])
+    return scan, scope
+
+
+def test_recheck_firewall_drop_reads_likely_firewalled(monkeypatch, tmp_path, capsys):
+    from akashi.proofs import around_cdn
+    scan, scope = _confirm_around_cdn(monkeypatch, tmp_path)
+    capsys.readouterr()
+    # the fix: a firewall now silently drops direct traffic to the origin
+    monkeypatch.setattr(around_cdn, "_send", _cdn_send(
+        lambda url: around_cdn.Fetched(url, error="Read timed out. (read timeout=10)")))
+    answer(monkeypatch, "yes")
+    cli.main(["recheck", scan, "--scope", scope])
+    out = capsys.readouterr().out
+    assert "unclear (likely firewalled)" in out
+    assert "reject instead of drop" in out
+    rows = [r for r in state.history("origins.test") if r["rule"] == "around_cdn"]
+    assert rows[-1]["status"] == "inconclusive" and rows[-1]["reason"] == "origin_silent"
+
+
+def test_recheck_firewall_reject_reads_fixed(monkeypatch, tmp_path, capsys):
+    from akashi.proofs import around_cdn
+    scan, scope = _confirm_around_cdn(monkeypatch, tmp_path)
+    capsys.readouterr()
+    # same fix with reject: the connection is refused -> provably fixed
+    monkeypatch.setattr(around_cdn, "_send", _cdn_send(
+        lambda url: around_cdn.Fetched(url, error="[Errno 111] Connection refused")))
+    answer(monkeypatch, "yes")
+    cli.main(["recheck", scan, "--scope", scope])
+    out = capsys.readouterr().out
+    assert "✓ fixed" in out and "1 fixed" in out

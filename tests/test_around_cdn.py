@@ -9,6 +9,7 @@ from monomi import scope as scope_mod
 from akashi.proofs import around_cdn
 from akashi.proofs.around_cdn import Fetched
 from akashi.research import Research
+from akashi.verdict import ORIGIN_SILENT
 from akashi.scan import provable
 import conftest
 
@@ -59,6 +60,30 @@ def test_inconclusive_on_timeout(tmp_path):
     send = _sender(error="Read timed out")
     v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
     assert v.status == "inconclusive"
+
+
+def test_silent_origin_behind_a_live_cdn_says_firewall(tmp_path):
+    # the CDN answers, the origin times out: the firewall-drop case
+    send = _sender(error="HTTPSConnectionPool: Read timed out. (read timeout=10)")
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.status == "inconclusive"            # a timeout never proves it's closed
+    assert v.reason == ORIGIN_SILENT
+    assert "went silent" in v.headline and "firewall" in v.headline
+
+
+def test_silent_origin_and_dead_cdn_is_not_called_firewalled(tmp_path):
+    # both sides down: nothing points at a firewall, keep the generic message
+    def send(url, headers, verify):
+        return Fetched(url, error="Connect timeout")
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.status == "inconclusive" and v.reason == ""
+    assert "didn't respond cleanly" in v.headline
+
+
+def test_connection_timeout_wording_also_counts(tmp_path):
+    send = _sender(error="ConnectTimeoutError: Connection to 203.0.113.9 timed out")
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.reason == ORIGIN_SILENT
 
 
 def test_inconclusive_when_origin_answers_but_differs(tmp_path):

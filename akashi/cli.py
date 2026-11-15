@@ -15,6 +15,7 @@ from akashi.research import ResearchError
 from akashi.research import load as load_research
 from akashi.scan import PROVABLE, ScanError, lead_key, load_scan, provable, scan_version, unhandled
 from akashi.ui import banner
+from akashi.verdict import ORIGIN_SILENT
 
 
 def _load_scope(path: str):
@@ -204,6 +205,13 @@ def _transition(verdict):
         return "✓", "fixed", "closed since the last check"
     if verdict.status == "confirmed":
         return "✗", "still open", "the fix hasn't closed this (or wasn't applied yet)"
+    if verdict.reason == ORIGIN_SILENT:
+        return "?", "unclear (likely firewalled)", (
+            "the origin no longer answers direct requests, it just goes silent. That's "
+            "what a firewall that drops non-CDN traffic looks like, but a timeout can't "
+            "prove it, so re-checking again will read the same. To make it provable, set "
+            "the firewall to reject instead of drop (ufw: `reject` instead of `deny`) and "
+            "re-check: a refused connection reads as fixed")
     return "?", "unclear", "couldn't confirm the fix right now; re-check again"
 
 

@@ -13,6 +13,10 @@ CONFIRMED = "confirmed"      # the lead still holds, proven now with evidence
 RULED_OUT = "ruled_out"      # the lead no longer holds (e.g. fixed since the scan)
 INCONCLUSIVE = "inconclusive"  # not enough to say either way; says what's missing
 
+# Reasons an inconclusive verdict can carry, so recheck (and later Kaidoku)
+# can explain it without parsing the headline.
+ORIGIN_SILENT = "origin_silent"  # origin timed out while the CDN still answered
+
 
 @dataclass
 class Verdict:
@@ -25,6 +29,7 @@ class Verdict:
     fix: list = field(default_factory=list)        # how to close it (confirmed only)
     owner: str = ""                     # who typically owns that fix
     key: str = ""                       # stable lead key (scan.lead_key), used by recheck
+    reason: str = ""                    # why it's inconclusive, when code knows (e.g. ORIGIN_SILENT)
 
     def line(self) -> str:
         mark = {CONFIRMED: "✓", RULED_OUT: "✗", INCONCLUSIVE: "?"}.get(self.status, "?")

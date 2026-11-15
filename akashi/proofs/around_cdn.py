@@ -25,6 +25,10 @@ Then it compares:
       origin doesn't serve this site unprotected.
   anything unclear (timeout, TLS error, 200 but different content)
                                                            -> INCONCLUSIVE.
+  origin times out while the CDN still answers             -> INCONCLUSIVE,
+      marked ORIGIN_SILENT: what a firewall that silently drops non-CDN
+      traffic looks like. A timeout can't prove that, so it never becomes
+      ruled out, but the verdict says so plainly and what to do.
 
 This is the only check in v0.1 that touches a target, so it is fail-closed on
 scope, logs both requests before sending, and carries the honest Akashi
@@ -46,7 +50,7 @@ from dataclasses import dataclass, field
 from monomi import common
 from monomi.common import ACTIVE_USER_AGENT
 
-from akashi.verdict import CONFIRMED, INCONCLUSIVE, RULED_OUT, Verdict
+from akashi.verdict import CONFIRMED, INCONCLUSIVE, ORIGIN_SILENT, RULED_OUT, Verdict
 
 TIMEOUT = 10          # seconds per request
 BODY_BYTES = 4096     # how much of each body we compare
@@ -70,6 +74,9 @@ DEFAULT_PAGE_WORDS = (
 # origin wants the site's name during the handshake (SNI), which a request to
 # a bare IP can't send, so this is a known blind spot, not a sign it's safe.
 TLS_WORDS = ("ssl", "tls", "handshake", "certificate", "sni")
+# Error words that mean the origin never answered in time. A firewall set to
+# DROP (ufw "deny", most cloud firewalls) looks exactly like this.
+TIMEOUT_WORDS = ("timed out", "timeout")
 # A title this short ("Home", "Login", "App") is too common to count alone.
 MIN_TITLE_CHARS = 8
 
@@ -192,6 +199,16 @@ def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
             return Verdict(item["id"], "around_cdn", RULED_OUT,
                            f"the origin {ip} does not answer web requests for {front}; "
                            "it can't be reached around the CDN", ev, now)
+        if cdn.status is not None and any(w in origin.error.lower() for w in TIMEOUT_WORDS):
+            ev.append(f"the CDN answered but the origin stayed silent for {TIMEOUT}s; a "
+                      "firewall that drops (not rejects) non-CDN traffic does this, and so "
+                      "does a slow or overloaded server, so Akashi can't tell which")
+            v = Verdict(item["id"], "around_cdn", INCONCLUSIVE,
+                        f"the origin {ip} went silent (timed out) while the CDN still serves "
+                        f"{front}; likely a firewall dropping direct traffic, but a timeout "
+                        "can't prove it", ev, now)
+            v.reason = ORIGIN_SILENT
+            return v
         return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
                        f"the origin {ip} didn't respond cleanly ({origin.error}); "
                        "re-run before relying on it", ev, now)

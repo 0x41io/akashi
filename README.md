@@ -90,6 +90,12 @@ they need no scope.
   send the site's name during the TLS handshake. Origins that insist on it fail
   the handshake, and the verdict is **inconclusive** ("check by hand"), never
   ruled out. A real bypass can hide here.
+- **Firewalls that drop.** The usual fix for going around the CDN is a firewall
+  that only lets the CDN in. If it *drops* other traffic, the origin just goes
+  silent, and a timeout can't prove anything (a slow server looks the same), so
+  re-check says **unclear (likely firewalled)** instead of fixed. Set the
+  firewall to *reject* instead (ufw: `reject`, not `deny`): a refused
+  connection reads as **fixed**.
 - **Default pages.** If the origin answers with a stock page ("Welcome to
   nginx!"), Akashi can't tell whether it would serve the site, so it says
   inconclusive instead of guessing either way.
