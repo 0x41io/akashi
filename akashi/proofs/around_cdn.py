@@ -17,7 +17,9 @@ Akashi checks it with exactly two requests, the ones the plan printed:
 Then it compares:
 
   origin serves the same site (200 + matching body/title) -> CONFIRMED: the CDN
-      can be bypassed.
+      can be bypassed. A stock default page ("Welcome to nginx!") or a short
+      generic title ("Home") never counts as a match: many unrelated servers
+      show those, so they stay INCONCLUSIVE.
   origin refuses the host (connection refused/reset, or 403/404/421 with a
       different body)                                      -> RULED_OUT: the
       origin doesn't serve this site unprotected.
@@ -53,6 +55,19 @@ TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 REFUSING_STATUS = {400, 403, 404, 409, 421, 503}
 # connection errors that mean "nothing serves this host here" (vs. a timeout)
 REFUSED_WORDS = ("refused", "reset", "no route", "name or service", "unreachable")
+# Words in the stock "it's installed" pages web servers and hosts ship with. If
+# both sides show one of these, matching proves nothing: lots of unrelated
+# servers serve the same default page. Compared lowercase against the title,
+# or the start of the body when there's no title.
+DEFAULT_PAGE_WORDS = (
+    "welcome to nginx", "apache2 ubuntu default page", "apache2 debian default page",
+    "it works!", "test page for the apache", "test page for the nginx",
+    "iis windows server", "welcome to caddy", "default web site page",
+    "web server's default page", "default page", "coming soon",
+    "this site can't be reached", "domain parked", "parked domain",
+)
+# A title this short ("Home", "Login", "App") is too common to count alone.
+MIN_TITLE_CHARS = 8
 
 
 @dataclass
@@ -93,16 +108,31 @@ def _fingerprint(body: str) -> str:
     return hashlib.sha256(norm.encode("utf-8", "replace")).hexdigest()
 
 
+def is_default_page(body: str) -> bool:
+    """Is this a web server's or host's stock placeholder page (nginx's
+    "Welcome to nginx!", Apache's "It works!", a parked-domain page...)?"""
+    head = (_title(body) or body[:300]).lower()
+    return any(w in head for w in DEFAULT_PAGE_WORDS)
+
+
 def _same_site(cdn: Fetched, origin: Fetched) -> bool:
-    """Does the origin serve what the CDN serves? Strict: identical body
-    fingerprint, or a non-empty matching <title>. An empty CDN body can't
-    confirm anything."""
+    """Does the origin serve what the CDN serves? Strict, because a match is
+    what turns the lead into CONFIRMED:
+
+      - an empty CDN body can't confirm anything;
+      - a stock default page never counts, even if both sides match;
+      - identical body fingerprint counts;
+      - otherwise a matching <title> counts only if it's specific enough
+        (MIN_TITLE_CHARS or longer), not a generic "Home" or "Login".
+    """
     if not cdn.body.strip():
+        return False
+    if is_default_page(cdn.body) or is_default_page(origin.body):
         return False
     if _fingerprint(cdn.body) == _fingerprint(origin.body):
         return True
     ct, ot = _title(cdn.body), _title(origin.body)
-    return bool(ct) and ct == ot
+    return len(ct) >= MIN_TITLE_CHARS and ct == ot
 
 
 def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
@@ -155,6 +185,12 @@ def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
                        "re-run before relying on it", ev, now)
 
     same = _same_site(cdn, origin)
+    if origin.status == 200 and not same and is_default_page(origin.body):
+        ev.append("the origin answered with a stock default page, which many unrelated "
+                  "servers show, so a match can't prove it serves this site")
+        return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
+                       f"the origin {ip} answered with a default page, not clearly {front}; "
+                       "check by hand", ev, now)
     if origin.status == 200 and same:
         ev.append("origin returned the same site as the CDN (matching body/title)")
         return Verdict(item["id"], "around_cdn", CONFIRMED,

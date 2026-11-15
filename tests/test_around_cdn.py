@@ -81,3 +81,48 @@ def test_research_header_is_sent_on_active_requests(tmp_path):
     assert any("research header sent" in e for e in v.evidence)
     # every request carried the header
     assert all(h.get("X-Bug-Bounty") == "ok-handle" for _, h, _ in send.seen)
+
+
+# ---------- default pages and generic titles never confirm (v0.1.1) ----------
+
+NGINX = "<html><head><title>Welcome to nginx!</title></head><body>If you see this page...</body></html>"
+
+
+def test_both_sides_showing_the_nginx_default_page_is_not_confirmed(tmp_path):
+    # identical bodies, but it's the stock page: proves nothing about this site
+    send = _sender(status=200, cdn_body=NGINX, origin_body=NGINX)
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.status == "inconclusive" and "default page" in v.headline
+
+
+def test_origin_default_page_says_why(tmp_path):
+    send = _sender(status=200, origin_body=NGINX)
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.status == "inconclusive"
+    assert any("stock default page" in e for e in v.evidence)
+
+
+def test_a_short_generic_title_alone_does_not_confirm(tmp_path):
+    # same "<title>Home</title>" but different pages: too common to count
+    send = _sender(status=200, cdn_body="<title>Home</title>shop", origin_body="<title>Home</title>blog")
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.status == "inconclusive"
+
+
+def test_a_specific_matching_title_still_confirms(tmp_path):
+    # real sites change a little per request (tokens, timestamps), so a
+    # specific matching title is still enough when the bodies differ slightly
+    send = _sender(status=200, cdn_body="<title>Origins Customer Portal</title>token=a1",
+                   origin_body="<title>Origins Customer Portal</title>token=b2")
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.status == "confirmed"
+
+
+@pytest.mark.parametrize("title", ["Welcome to nginx!", "Apache2 Ubuntu Default Page: It works",
+                                   "IIS Windows Server", "Domain parked"])
+def test_is_default_page_knows_the_common_ones(title):
+    assert around_cdn.is_default_page(f"<title>{title}</title>")
+
+
+def test_is_default_page_leaves_real_sites_alone():
+    assert not around_cdn.is_default_page("<title>Origins Customer Portal</title>")
