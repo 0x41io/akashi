@@ -11,9 +11,10 @@ It is not an autonomous pentester. It never picks its own targets, never runs
 exploits, and never changes anything on a target. Every active check stays
 inside an approved scope and waits for a typed `yes`.
 
-> Status: **v0.1, in progress.** The `plan` command (below) is built: it reads a
-> scan and shows what would be checked, without sending anything. `verify` (run
-> the checks), the fixes, and `recheck` are next.
+> Status: **v0.1, in progress.** `plan` (show what would be checked, send
+> nothing) and `verify` for the **passive** checks (takeover and email re-checks
+> over DNS, after a typed yes) are built. The active check (going around the
+> CDN), the registry lookup, the fixes, and `recheck` are next.
 
 ## What it proves (v0.1)
 
@@ -48,6 +49,10 @@ pip install -e .
 ```bash
 # Show what would be checked to prove a scan's leads. Sends nothing.
 akashi plan scan.json --scope scope.txt
+
+# Run the passive checks (DNS/registry) after a typed yes. Records each
+# verdict, with its evidence, to an append-only history per target.
+akashi verify scan.json --scope scope.txt
 ```
 
 `scan.json` is a Monomi scan saved with `monomi --json`, from Monomi v1.15.0 or
