@@ -17,6 +17,7 @@ env/
 
 # Akashi data (proof history, logs) and scans under test
 scans/
+history/
 *.json
 !tests/**/*.json
 .pytest_cache/
