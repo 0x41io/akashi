@@ -10,7 +10,7 @@ import sys
 
 from monomi import scope as scope_mod
 
-from akashi import __version__, plan
+from akashi import __version__, plan, state, verify
 from akashi.scan import PROVABLE, ScanError, load_scan, provable, scan_version, unhandled
 
 
@@ -97,6 +97,64 @@ def cmd_plan(args) -> int:
     return 0
 
 
+def _ask(prompt: str) -> str:
+    """Read the person's confirmation. Split out so tests can stand in for it."""
+    try:
+        return input(prompt)
+    except EOFError:
+        return ""
+
+
+def cmd_verify(args) -> int:
+    try:
+        scan = load_scan(args.scan)
+        version = scan_version(scan)
+    except ScanError as e:
+        print(f"akashi: {e}", file=sys.stderr)
+        return 2
+    scope, scope_problem = _load_scope(args.scope)
+    items = provable(scan)
+    steps = plan.build(items, scope)
+    _print_plan(scan, version, scope, scope_problem, steps)
+    _print_unhandled(scan)
+
+    passive = [it for it in items if verify.is_passive(it)]
+    active = [it for it in items if not verify.is_passive(it)]
+    if active:
+        print(f"Note: {len(active)} active check(s) (around the CDN) are not run in this "
+              "step; they come in a later milestone.")
+    if not passive:
+        print("Nothing to verify passively in this scan.")
+        return 0
+
+    # The typed yes: the person sees the whole plan above, then confirms. These
+    # checks are passive (DNS/registry), but the habit of confirming every run
+    # is in place before the active checks exist. --yes never skips it.
+    print(f"\nRun {len(passive)} passive check(s) now? They query DNS/registry only and never "
+          "contact the target.")
+    if _ask("Type yes to run, anything else to cancel: ").strip().lower() != "yes":
+        print("Cancelled. Nothing was sent.")
+        return 0
+
+    print()
+    target = scan.get("target", "unknown")
+    confirmed = ruled = incon = 0
+    path = None
+    for item in passive:
+        v = verify.prove(item)
+        print(v.line())
+        for e in v.evidence:
+            print(f"      {e}")
+        path = state.record(target, v)
+        confirmed += v.status == "confirmed"
+        ruled += v.status == "ruled_out"
+        incon += v.status == "inconclusive"
+    print(f"\n{confirmed} confirmed, {ruled} ruled out, {incon} inconclusive.")
+    if path:
+        print(f"Saved to the proof history: {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="akashi", description="0x41 / akashi - prove Monomi's leads, then fix and re-check")
@@ -107,6 +165,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("scan", help="a saved Monomi scan (monomi --json ...), v1.15.0 or newer")
     p.add_argument("--scope", help="scope file (same format as Monomi's): active checks stay inside it")
     p.set_defaults(func=cmd_plan)
+
+    v = sub.add_parser("verify", help="run the passive checks (DNS/registry) after a typed yes")
+    v.add_argument("scan", help="a saved Monomi scan, v1.15.0 or newer")
+    v.add_argument("--scope", help="scope file (same format as Monomi's)")
+    v.set_defaults(func=cmd_verify)
     return parser
 
 

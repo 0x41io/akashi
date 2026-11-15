@@ -1,0 +1,28 @@
+"""
+The result of trying to prove one lead.
+
+A verdict is deliberately one of three things. "inconclusive" is the default
+and the safe one: a partial or unclear check never becomes "confirmed". Every
+verdict carries its own evidence (the DNS answers, who confirmed them, the
+time), so a person or Kaidoku can see exactly why.
+"""
+
+from dataclasses import dataclass, field
+
+CONFIRMED = "confirmed"      # the lead still holds, proven now with evidence
+RULED_OUT = "ruled_out"      # the lead no longer holds (e.g. fixed since the scan)
+INCONCLUSIVE = "inconclusive"  # not enough to say either way; says what's missing
+
+
+@dataclass
+class Verdict:
+    id: str                             # the lead's id, e.g. "P1"
+    rule: str
+    status: str                         # CONFIRMED / RULED_OUT / INCONCLUSIVE
+    headline: str                       # one line a person reads first
+    evidence: list = field(default_factory=list)   # the facts it rests on
+    checked_at: str = ""                # when the check ran (UTC)
+
+    def line(self) -> str:
+        mark = {CONFIRMED: "✓", RULED_OUT: "✗", INCONCLUSIVE: "?"}.get(self.status, "?")
+        return f"[{self.id}] {self.rule}: {mark} {self.status} — {self.headline}"
