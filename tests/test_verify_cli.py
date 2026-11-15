@@ -70,6 +70,20 @@ def test_verify_runs_active_check_with_scope(monkeypatch, tmp_path, capsys):
     assert any(r["rule"] == "around_cdn" for r in state.history("origins.test"))
 
 
+def test_verify_records_a_fix_for_confirmed_leads(monkeypatch, tmp_path, capsys):
+    from akashi.proofs import around_cdn
+    monkeypatch.setattr(around_cdn, "_send", lambda url, headers, verify: around_cdn.Fetched(
+        url, 200, {}, "<title>App</title>hi"))
+    answer(monkeypatch, "yes")
+    scope = conftest.write_scope(tmp_path, "origins.test\n*.origins.test\n")
+    cli.main(["verify", conftest.cdn_and_email_scan(tmp_path), "--scope", scope])
+    out = capsys.readouterr().out
+    assert "fix:" in out
+    rows = state.history("origins.test")
+    assert any(r["rule"] == "around_cdn" and r["fix"] for r in rows)
+    assert any(r["rule"] == "email_spoofing" and r["fix"] for r in rows)
+
+
 def test_verify_without_scope_blocks_the_active_check(monkeypatch, tmp_path, capsys):
     answer(monkeypatch, "yes")
     cli.main(["verify", conftest.cdn_and_email_scan(tmp_path)])

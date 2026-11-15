@@ -21,8 +21,9 @@ inside an approved scope and waits for a typed `yes`.
 > nothing) and `verify` are built. The passive checks — the takeover re-check
 > over DNS, the registry (RDAP) lookup that settles an unknown-service
 > takeover, and the email re-check — plus the one active check (going around
-> the CDN, inside scope) all run after a typed yes. The fixes and `recheck`
-> are next.
+> the CDN, inside scope) all run after a typed yes, and a **confirmed** lead
+> prints the exact fix to close it. `recheck` (re-run after the fix to prove
+> it's closed) is next.
 
 ## What it proves (v0.1)
 

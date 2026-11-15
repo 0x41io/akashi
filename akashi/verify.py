@@ -8,9 +8,9 @@ module just maps a lead to its proof and runs it, turning any failure into an
 inconclusive verdict rather than a crash.
 """
 
-from akashi import activelog
+from akashi import activelog, fixes
 from akashi.proofs import around_cdn, email, takeover
-from akashi.verdict import INCONCLUSIVE, Verdict
+from akashi.verdict import CONFIRMED, INCONCLUSIVE, Verdict
 
 # rule -> the function that proves it, for the checks that never touch the target
 PASSIVE_PROOFS = {
@@ -40,11 +40,19 @@ def _inconclusive(item: dict, reason: str) -> Verdict:
                    common.now_utc())
 
 
+def _with_fix(item: dict, verdict: Verdict) -> Verdict:
+    """Attach the fix steps to a confirmed verdict (nothing to fix otherwise).
+    Built from the lead's rule and targets, like the verdict itself."""
+    if verdict.status == CONFIRMED:
+        verdict.fix, verdict.owner = fixes.for_rule(verdict.rule, item.get("targets") or {})
+    return verdict
+
+
 def prove(item: dict) -> Verdict:
     """The verdict for one passive lead. A lookup failure (DNS down, etc.)
     becomes inconclusive with the reason, never an exception."""
     try:
-        return PASSIVE_PROOFS[item["rule"]](item)
+        return _with_fix(item, PASSIVE_PROOFS[item["rule"]](item))
     except Exception as e:  # network/DNS failure: can't say, don't guess
         return _inconclusive(item, str(e))
 
@@ -65,7 +73,7 @@ def prove_active(item: dict, *, scope, research=None, send=None) -> Verdict:
     if send is not None:
         kwargs["send"] = send
     try:
-        return ACTIVE_PROOFS[item["rule"]](item, **kwargs)
+        return _with_fix(item, ACTIVE_PROOFS[item["rule"]](item, **kwargs))
     except Exception as e:
         activelog.refused("around_cdn", f"error: {e}", scope_sha=sha)
         return _inconclusive(item, str(e))

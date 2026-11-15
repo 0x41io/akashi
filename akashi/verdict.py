@@ -22,6 +22,8 @@ class Verdict:
     headline: str                       # one line a person reads first
     evidence: list = field(default_factory=list)   # the facts it rests on
     checked_at: str = ""                # when the check ran (UTC)
+    fix: list = field(default_factory=list)        # how to close it (confirmed only)
+    owner: str = ""                     # who typically owns that fix
 
     def line(self) -> str:
         mark = {CONFIRMED: "✓", RULED_OUT: "✗", INCONCLUSIVE: "?"}.get(self.status, "?")

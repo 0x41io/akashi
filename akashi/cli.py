@@ -172,6 +172,11 @@ def cmd_verify(args) -> int:
         print(verdict.line())
         for e in verdict.evidence:
             print(f"      {e}")
+        if verdict.fix:
+            owner = f"  (owner: {verdict.owner})" if verdict.owner else ""
+            print(f"      fix:{owner}")
+            for n, step in enumerate(verdict.fix, 1):
+                print(f"        {n}. {step}")
         path = state.record(target, verdict)
         tally[verdict.status] = tally.get(verdict.status, 0) + 1
 
