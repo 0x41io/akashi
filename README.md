@@ -72,7 +72,9 @@ akashi verify scan.json --scope scope.txt --research research.txt
 
 # After fixing a confirmed lead, re-run its check to prove it's closed. Only
 # leads that were confirmed before are re-checked; each reports fixed, still
-# open, or unclear, and the result is appended to the proof history.
+# open, or unclear, and the result is appended to the proof history. Leads are
+# matched by what they're about (rule + targets), not their id, so a fresh scan
+# taken after the fix works too.
 akashi recheck scan.json --scope scope.txt
 ```
 

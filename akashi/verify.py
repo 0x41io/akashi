@@ -9,6 +9,7 @@ inconclusive verdict rather than a crash.
 """
 
 from akashi import activelog, fixes
+from akashi.scan import lead_key
 from akashi.proofs import around_cdn, email, takeover
 from akashi.verdict import CONFIRMED, INCONCLUSIVE, Verdict
 
@@ -41,8 +42,10 @@ def _inconclusive(item: dict, reason: str) -> Verdict:
 
 
 def _with_fix(item: dict, verdict: Verdict) -> Verdict:
-    """Attach the fix steps to a confirmed verdict (nothing to fix otherwise).
-    Built from the lead's rule and targets, like the verdict itself."""
+    """Stamp the lead's stable key on the verdict, and attach the fix steps
+    when it's confirmed (nothing to fix otherwise). Both come from the lead's
+    rule and targets, like the verdict itself."""
+    verdict.key = lead_key(item)
     if verdict.status == CONFIRMED:
         verdict.fix, verdict.owner = fixes.for_rule(verdict.rule, item.get("targets") or {})
     return verdict
@@ -54,7 +57,7 @@ def prove(item: dict) -> Verdict:
     try:
         return _with_fix(item, PASSIVE_PROOFS[item["rule"]](item))
     except Exception as e:  # network/DNS failure: can't say, don't guess
-        return _inconclusive(item, str(e))
+        return _with_fix(item, _inconclusive(item, str(e)))
 
 
 def prove_active(item: dict, *, scope, research=None, send=None) -> Verdict:
@@ -76,4 +79,4 @@ def prove_active(item: dict, *, scope, research=None, send=None) -> Verdict:
         return _with_fix(item, ACTIVE_PROOFS[item["rule"]](item, **kwargs))
     except Exception as e:
         activelog.refused("around_cdn", f"error: {e}", scope_sha=sha)
-        return _inconclusive(item, str(e))
+        return _with_fix(item, _inconclusive(item, str(e)))

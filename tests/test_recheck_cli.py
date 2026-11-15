@@ -69,3 +69,29 @@ def test_recheck_cancelled_sends_nothing(monkeypatch, tmp_path, capsys):
     answer(monkeypatch, "no")
     cli.main(["recheck", scan])
     assert "Cancelled. Nothing was sent." in capsys.readouterr().out
+
+
+def test_recheck_finds_the_lead_in_a_fresh_scan_that_renumbered_it(monkeypatch, tmp_path, capsys):
+    """v0.1.1: a new scan after the fix can give the same lead a new id.
+    Recheck matches by rule + targets, so it still finds it."""
+    import json
+    scan = _verify_to_confirm(monkeypatch, tmp_path)
+    capsys.readouterr()
+    data = json.load(open(scan))
+    for group in ("paths", "leads"):
+        for item in data["paths"].get(group) or []:
+            item["id"] = item["id"] + "9"        # P1 -> P19, L1 -> L19, ...
+    fresh = tmp_path / "fresh.json"
+    fresh.write_text(json.dumps(data))
+    monkeypatch.setattr(dnscheck, "get_cname", lambda name: None)   # fixed since
+    answer(monkeypatch, "yes")
+    cli.main(["recheck", str(fresh)])
+    out = capsys.readouterr().out
+    assert "No confirmed leads" not in out
+    assert "fixed" in out
+
+
+def test_verify_records_the_stable_key(monkeypatch, tmp_path):
+    _verify_to_confirm(monkeypatch, tmp_path)
+    keys = {r["key"] for r in state.history("takeover.test")}
+    assert "takeover:old-app.takeover.test>old-app-zz9.azurewebsites.net" in keys

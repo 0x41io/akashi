@@ -71,6 +71,40 @@ def items(scan: dict):
             yield where, item
 
 
+def _names(values) -> list[str]:
+    """Host names compared the way DNS does: lowercase, no trailing dot,
+    sorted so their order in a scan never matters."""
+    return sorted(str(v).lower().rstrip(".") for v in values or [])
+
+
+def lead_key(item: dict) -> str:
+    """A stable name for a lead, built from what it is about (its rule and
+    targets), never from its id.
+
+    Monomi numbers leads by position (P1, L2, ...), so the same lead can get
+    a different id in the next scan once something else is fixed. The key
+    stays the same as long as the lead is about the same things:
+
+      takeover / takeover_unknown -> the host and the CNAME it points at
+      email_spoofing              -> the domain
+      around_cdn                  -> the fronted host and the origin IP
+      anything else               -> its hosts and IPs
+
+    e.g. "takeover:old-app.example.test>old-app.azurewebsites.net".
+    """
+    rule = item.get("rule") or "?"
+    t = item.get("targets") or {}
+    if rule in ("takeover", "takeover_unknown"):
+        parts = [",".join(_names(t.get("hosts"))), str(t.get("cname") or "").lower().rstrip(".")]
+    elif rule == "email_spoofing":
+        parts = [",".join(_names(t.get("hosts")))]
+    elif rule == "around_cdn":
+        parts = [",".join(_names(t.get("fronted"))), ",".join(sorted(t.get("ips") or []))]
+    else:
+        parts = [",".join(_names(t.get("hosts"))), ",".join(sorted(t.get("ips") or []))]
+    return f"{rule}:" + ">".join(parts)
+
+
 def provable(scan: dict) -> list[dict]:
     """The scan's findings and leads whose rule Akashi v0.1 can prove.
 

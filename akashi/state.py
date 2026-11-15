@@ -40,10 +40,18 @@ def history(target: str) -> list:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def latest(target: str, rule: str, lead_id: str):
-    """The most recent recorded verdict for a lead (matched by rule + id),
-    or None. Used by `recheck` to find what was confirmed before."""
+def latest(target: str, rule: str, lead_id: str, key: str = ""):
+    """The most recent recorded verdict for a lead, or None. Used by
+    `recheck` to find what was confirmed before.
+
+    Matched by the lead's stable key (scan.lead_key), so a newer scan that
+    renumbered the lead still finds it. History lines written before v0.1.1
+    have no key; those fall back to the old rule + id match.
+    """
     for row in reversed(history(target)):
-        if row.get("rule") == rule and row.get("id") == lead_id:
+        if row.get("key"):
+            if key and row["key"] == key:
+                return row
+        elif row.get("rule") == rule and row.get("id") == lead_id:
             return row
     return None

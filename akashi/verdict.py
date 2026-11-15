@@ -24,6 +24,7 @@ class Verdict:
     checked_at: str = ""                # when the check ran (UTC)
     fix: list = field(default_factory=list)        # how to close it (confirmed only)
     owner: str = ""                     # who typically owns that fix
+    key: str = ""                       # stable lead key (scan.lead_key), used by recheck
 
     def line(self) -> str:
         mark = {CONFIRMED: "✓", RULED_OUT: "✗", INCONCLUSIVE: "?"}.get(self.status, "?")

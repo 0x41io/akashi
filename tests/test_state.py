@@ -43,3 +43,29 @@ def test_messy_target_name_is_made_safe():
 
 def test_history_empty_for_unknown_target():
     assert state.history("never-seen.test") == []
+
+
+# ---------- matching by stable key (v0.1.1) ----------
+
+KEY = "takeover:old-app.example.test>x.azurewebsites.net"
+
+
+def test_latest_matches_by_key_even_if_the_id_changed():
+    state.record("example.test", Verdict("P1", "takeover", CONFIRMED, "x", [], "t", key=KEY))
+    # the next scan calls the same lead P3
+    row = state.latest("example.test", "takeover", "P3", KEY)
+    assert row is not None and row["status"] == CONFIRMED
+
+
+def test_latest_does_not_mix_up_two_leads_with_the_same_id():
+    state.record("example.test", Verdict("P1", "takeover", CONFIRMED, "x", [], "t", key=KEY))
+    # a different lead that happens to be P1 in the new scan
+    other = "takeover:legacy.example.test>gone.unknownhost.test"
+    assert state.latest("example.test", "takeover", "P1", other) is None
+
+
+def test_latest_falls_back_to_rule_and_id_for_old_history_lines():
+    # a line written by v0.1.0 has no "key"
+    state.record("example.test", Verdict("P1", "takeover", CONFIRMED, "x", [], "t"))
+    row = state.latest("example.test", "takeover", "P1", KEY)
+    assert row is not None and row["status"] == CONFIRMED

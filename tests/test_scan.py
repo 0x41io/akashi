@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from akashi.scan import MIN_MONOMI, PROVABLE, ScanError, load_scan, provable, scan_version, unhandled
+from akashi.scan import MIN_MONOMI, PROVABLE, ScanError, lead_key, load_scan, provable, scan_version, unhandled
 import conftest
 
 
@@ -75,3 +75,31 @@ def test_unhandled_lists_rules_akashi_cant_prove(tmp_path):
     assert left[0]["id"] == "L9" and left[0]["where"] == "lead"
     # nothing provable shows up as unhandled, and nothing unhandled is provable
     assert not ({i["rule"] for i in left} & set(PROVABLE))
+
+
+# ---------- lead_key: a stable name from rule + targets (v0.1.1) ----------
+
+def test_lead_key_takeover_uses_host_and_cname():
+    item = {"id": "P1", "rule": "takeover",
+            "targets": {"hosts": ["Old-App.example.test."], "ips": [], "cname": "x.azurewebsites.net"}}
+    assert lead_key(item) == "takeover:old-app.example.test>x.azurewebsites.net"
+
+
+def test_lead_key_ignores_the_id():
+    t = {"hosts": ["example.test"], "ips": [], "verdict": "spoofable"}
+    assert lead_key({"id": "P1", "rule": "email_spoofing", "targets": t}) == \
+        lead_key({"id": "P7", "rule": "email_spoofing", "targets": t})
+
+
+def test_lead_key_around_cdn_is_per_front_and_origin():
+    def item(ip):
+        return {"rule": "around_cdn", "targets": {"hosts": ["dev.example.test"], "ips": [ip],
+                                                  "fronted": ["www.example.test"], "cdn": "Cloudflare"}}
+    assert lead_key(item("192.0.2.1")) == "around_cdn:www.example.test>192.0.2.1"
+    assert lead_key(item("192.0.2.1")) != lead_key(item("192.0.2.2"))
+
+
+def test_lead_key_host_order_does_not_matter():
+    a = {"rule": "side_door", "targets": {"hosts": ["b.test", "a.test"], "ips": ["192.0.2.1"]}}
+    b = {"rule": "side_door", "targets": {"hosts": ["a.test", "b.test"], "ips": ["192.0.2.1"]}}
+    assert lead_key(a) == lead_key(b)

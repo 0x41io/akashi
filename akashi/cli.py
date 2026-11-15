@@ -13,7 +13,7 @@ from monomi import scope as scope_mod
 from akashi import __version__, plan, state, verify
 from akashi.research import ResearchError
 from akashi.research import load as load_research
-from akashi.scan import PROVABLE, ScanError, load_scan, provable, scan_version, unhandled
+from akashi.scan import PROVABLE, ScanError, lead_key, load_scan, provable, scan_version, unhandled
 
 
 def _load_scope(path: str):
@@ -218,10 +218,12 @@ def cmd_recheck(args) -> int:
     target = scan.get("target", "unknown")
 
     # Only re-check leads whose latest recorded verdict was "confirmed": those
-    # are the ones you proved, then set out to fix. Matched by rule + id in the
-    # same saved scan, so re-check the scan you verified.
+    # are the ones you proved, then set out to fix. Matched by each lead's
+    # stable key (rule + targets), so a fresh scan works even if Monomi
+    # renumbered the leads.
     pending = [it for it in provable(scan)
-               if (state.latest(target, it.get("rule"), it.get("id")) or {}).get("status") == "confirmed"]
+               if (state.latest(target, it.get("rule"), it.get("id"), lead_key(it)) or {})
+               .get("status") == "confirmed"]
 
     print(f"Akashi re-check for {target}  (from Monomi {'.'.join(map(str, version))})")
     if not pending:
