@@ -63,11 +63,32 @@ def test_takeover_one_resolver_only_is_inconclusive(monkeypatch):
     assert v.status == INCONCLUSIVE and "both DoH" in v.headline
 
 
-def test_takeover_unknown_still_dangling_is_inconclusive(monkeypatch):
-    # an unknown service: still dangling, but claimability needs the registry
+def set_registry(monkeypatch, status):
+    from akashi.proofs import registry
+    monkeypatch.setattr(registry, "registration", lambda domain: (status, f"stubbed {status}"))
+
+
+def test_takeover_unknown_reserved_tld_is_inconclusive(monkeypatch):
+    # a .test target has no registrable domain, so the registry can't settle it
     set_dns(monkeypatch, "gone-zz9.unknownhost.test", False, ["Cloudflare", "Google"])
     v = verify.prove(takeover_item(rule="takeover_unknown", cname="gone-zz9.unknownhost.test"))
-    assert v.status == INCONCLUSIVE and "registry" in v.headline
+    assert v.status == INCONCLUSIVE and "registrable" in v.headline
+
+
+def test_takeover_unknown_registered_domain_is_ruled_out(monkeypatch):
+    from akashi.proofs import registry
+    set_dns(monkeypatch, "gone-zz9.unknownhost.com", False, ["Cloudflare", "Google"])
+    set_registry(monkeypatch, registry.REGISTERED)
+    v = verify.prove(takeover_item(rule="takeover_unknown", cname="gone-zz9.unknownhost.com"))
+    assert v.status == RULED_OUT and "registered" in v.headline
+
+
+def test_takeover_unknown_no_owner_found_is_inconclusive(monkeypatch):
+    from akashi.proofs import registry
+    set_dns(monkeypatch, "gone-zz9.unknownhost.com", False, ["Cloudflare", "Google"])
+    set_registry(monkeypatch, registry.UNKNOWN)
+    v = verify.prove(takeover_item(rule="takeover_unknown", cname="gone-zz9.unknownhost.com"))
+    assert v.status == INCONCLUSIVE and "confirm by hand" in v.headline
 
 
 # ---------- email ----------

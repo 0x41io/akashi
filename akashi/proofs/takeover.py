@@ -21,6 +21,7 @@ it never claims or registers anything.
 
 from monomi import common, dnscheck
 
+from akashi.proofs import registry
 from akashi.verdict import CONFIRMED, INCONCLUSIVE, RULED_OUT, Verdict
 
 BOTH_RESOLVERS = {"Cloudflare", "Google"}
@@ -54,9 +55,21 @@ def prove(item: dict) -> Verdict:
                        "resolvers did not confirm it; re-run before relying on it", ev, now)
 
     if rule == "takeover_unknown":
+        domain = registry.registrable(cname)
+        if not domain:
+            ev.append(f"{cname} has no registrable domain (reserved or unknown TLD)")
+            return Verdict(item["id"], rule, INCONCLUSIVE,
+                           f"{host} still dangles at {cname}, but its TLD isn't registrable, so "
+                           "the registry can't settle whether it's claimable", ev, now)
+        status, reason = registry.registration(domain)
+        ev.append(reason)
+        if status == registry.REGISTERED:
+            return Verdict(item["id"], rule, RULED_OUT,
+                           f"{host} dangles at {cname}, but {domain} is registered, so an attacker "
+                           "can't claim it", ev, now)
         return Verdict(item["id"], rule, INCONCLUSIVE,
-                       f"{host} still dangles at {cname}; whether an attacker could claim it "
-                       "depends on the registry, which the registry check settles", ev, now)
+                       f"{host} still dangles at {cname} and no owner was found for {domain}; "
+                       "confirm by hand before treating it as claimable", ev, now)
 
     return Verdict(item["id"], rule, CONFIRMED,
                    f"{host} still points at {cname}, which still does not exist on both "

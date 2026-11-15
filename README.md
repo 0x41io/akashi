@@ -12,9 +12,10 @@ exploits, and never changes anything on a target. Every active check stays
 inside an approved scope and waits for a typed `yes`.
 
 > Status: **v0.1, in progress.** `plan` (show what would be checked, send
-> nothing) and `verify` for the **passive** checks (takeover and email re-checks
-> over DNS, after a typed yes) are built. The active check (going around the
-> CDN), the registry lookup, the fixes, and `recheck` are next.
+> nothing) and `verify` for the **passive** checks are built: the takeover
+> re-check over DNS, the registry (RDAP) lookup that settles an unknown-service
+> takeover, and the email re-check, all after a typed yes. The one active check
+> (going around the CDN), the fixes, and `recheck` are next.
 
 ## What it proves (v0.1)
 
@@ -24,7 +25,7 @@ lead is without reading its text.
 | Monomi lead | How Akashi proves it | Touches the target? |
 |---|---|---|
 | `takeover` (claimable service) | Re-check now that the dangling CNAME still points at the deleted target and that the target still doesn't exist, on both DoH resolvers. Never claims the name. | No — DNS only |
-| `takeover_unknown` | The same DNS re-check, plus a registry (RDAP) lookup of whether the target's domain is free to register | No — DNS + registry |
+| `takeover_unknown` | The same DNS re-check, plus a registry (RDAP) lookup: if the target's domain is registered, an attacker can't claim it (ruled out); otherwise inconclusive, since claiming a domain is a human decision | No — DNS + registry |
 | `around_cdn` | One request to the fronted host through the CDN, one to the origin IP with the same `Host` header; compare the responses | Yes — one request each |
 | `email_spoofing` | Fresh SPF / DMARC / DKIM lookup | No — DNS only |
 
