@@ -66,6 +66,10 @@ DEFAULT_PAGE_WORDS = (
     "web server's default page", "default page", "coming soon",
     "this site can't be reached", "domain parked", "parked domain",
 )
+# Error words that mean the TLS handshake with the bare IP failed. Often the
+# origin wants the site's name during the handshake (SNI), which a request to
+# a bare IP can't send, so this is a known blind spot, not a sign it's safe.
+TLS_WORDS = ("ssl", "tls", "handshake", "certificate", "sni")
 # A title this short ("Home", "Login", "App") is too common to count alone.
 MIN_TITLE_CHARS = 8
 
@@ -176,6 +180,14 @@ def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
 
     # The origin didn't answer at all.
     if origin.status is None:
+        # TLS first: a failed handshake means something answered, so even an
+        # error that says "reset" here is not proof that nothing serves the site.
+        if any(w in origin.error.lower() for w in TLS_WORDS):
+            ev.append("the TLS handshake with the bare IP failed; origins that require the "
+                      "site name in the handshake (SNI) do this, so Akashi can't tell here")
+            return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
+                           f"the origin {ip} refused the TLS handshake for a bare-IP request; "
+                           "it may still serve the site, so check by hand", ev, now)
         if any(w in origin.error.lower() for w in REFUSED_WORDS):
             return Verdict(item["id"], "around_cdn", RULED_OUT,
                            f"the origin {ip} does not answer web requests for {front}; "

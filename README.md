@@ -35,7 +35,7 @@ lead is without reading its text.
 |---|---|---|
 | `takeover` (claimable service) | Re-check now that the dangling CNAME still points at the deleted target and that the target still doesn't exist, on both DoH resolvers. Never claims the name. | No — DNS only |
 | `takeover_unknown` | The same DNS re-check, plus a registry (RDAP) lookup: if the target's domain is registered, an attacker can't claim it (ruled out); otherwise inconclusive, since claiming a domain is a human decision | No — DNS + registry |
-| `around_cdn` | One request to the fronted host through the CDN, one to the origin IP with the same `Host` header; compare the responses | Yes — one request each |
+| `around_cdn` | One request to the fronted host through the CDN, one to the origin IP with the same `Host` header; compare the responses. A stock default page or a short generic title never counts as a match | Yes — one request each |
 | `email_spoofing` | Fresh SPF / DMARC / DKIM lookup | No — DNS only |
 
 Every verdict is **confirmed**, **ruled out**, or **inconclusive** (the default),
@@ -83,6 +83,16 @@ newer. `--scope` is a scope file in Monomi's format; the active check (going
 around the CDN) only runs against hosts it allows, and is shown as blocked
 without it. The passive checks (DNS and registry) never contact the target, so
 they need no scope.
+
+## Known limits
+
+- **Origins that require SNI.** The origin request goes to a bare IP, so it can't
+  send the site's name during the TLS handshake. Origins that insist on it fail
+  the handshake, and the verdict is **inconclusive** ("check by hand"), never
+  ruled out. A real bypass can hide here.
+- **Default pages.** If the origin answers with a stock page ("Welcome to
+  nginx!"), Akashi can't tell whether it would serve the site, so it says
+  inconclusive instead of guessing either way.
 
 ## Guardrails
 

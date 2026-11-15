@@ -126,3 +126,18 @@ def test_is_default_page_knows_the_common_ones(title):
 
 def test_is_default_page_leaves_real_sites_alone():
     assert not around_cdn.is_default_page("<title>Origins Customer Portal</title>")
+
+
+def test_tls_handshake_failure_is_inconclusive_and_names_sni(tmp_path):
+    # a bare-IP request to an origin that requires SNI: can't tell, never "ruled out"
+    send = _sender(error="SSLError: [SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 alert internal error")
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.status == "inconclusive" and "TLS handshake" in v.headline
+    assert any("SNI" in e for e in v.evidence)
+
+
+def test_tls_reset_is_not_ruled_out(tmp_path):
+    # "reset" is a refused-word, but during the TLS handshake it isn't proof of anything
+    send = _sender(error="SSLError: ('Connection reset by peer')")
+    v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
+    assert v.status == "inconclusive"
