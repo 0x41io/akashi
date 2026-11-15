@@ -1,11 +1,36 @@
 """Shared test helpers: real Monomi scans, built and saved the way Monomi
 does it, so Akashi is tested against genuine output, not hand-written JSON."""
 
+import socket
+
+import pytest
 from monomi import cli as monomi_cli
 from monomi import evidence
 from monomi.paths import build_paths
 
 T = "2026-11-08T12:00:00+00:00"
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """Fail any test that tries to reach the network. Tests must stub DNS,
+    email and HTTP. A blocked call raises inside the code (which may turn it
+    into an "inconclusive" verdict and still pass), so the attempt is also
+    recorded and the test fails at the end, naming where it tried to go."""
+    tried = []
+
+    def blocked(self, address, *rest):
+        tried.append(str(address))
+        raise OSError(f"test tried to reach the network: {address}")
+
+    def blocked_sendto(self, data, *rest):
+        return blocked(self, rest[-1] if rest else "?")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket.socket, "connect_ex", blocked)
+    monkeypatch.setattr(socket.socket, "sendto", blocked_sendto)
+    yield
+    assert not tried, f"test tried to reach the network: {sorted(set(tried))}"
 
 
 def _save(results, tmp_path, name="scan.json"):

@@ -110,7 +110,12 @@ def _cdn_send(origin):
 
 
 def _confirm_around_cdn(monkeypatch, tmp_path):
+    from monomi import emailauth
     from akashi.proofs import around_cdn
+    # the scan also has an email lead; keep it spoofable with no real lookup
+    monkeypatch.setattr(emailauth, "check_email", lambda domain: {
+        "verdict": {"verdict": "spoofable", "summary": "", "notes": []},
+        "dmarc": {"policy": None}, "spf": {"record": None}})
     monkeypatch.setattr(around_cdn, "_send", _cdn_send(
         lambda url: around_cdn.Fetched(url, 200, {}, "<title>Origins test site</title>hello")))
     scan = conftest.cdn_and_email_scan(tmp_path)
