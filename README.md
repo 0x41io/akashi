@@ -18,10 +18,11 @@ exploits, and never changes anything on a target. Every active check stays
 inside an approved scope and waits for a typed `yes`.
 
 > Status: **v0.1, in progress.** `plan` (show what would be checked, send
-> nothing) and `verify` for the **passive** checks are built: the takeover
-> re-check over DNS, the registry (RDAP) lookup that settles an unknown-service
-> takeover, and the email re-check, all after a typed yes. The one active check
-> (going around the CDN), the fixes, and `recheck` are next.
+> nothing) and `verify` are built. The passive checks — the takeover re-check
+> over DNS, the registry (RDAP) lookup that settles an unknown-service
+> takeover, and the email re-check — plus the one active check (going around
+> the CDN, inside scope) all run after a typed yes. The fixes and `recheck`
+> are next.
 
 ## What it proves (v0.1)
 
@@ -57,9 +58,15 @@ pip install -e .
 # Show what would be checked to prove a scan's leads. Sends nothing.
 akashi plan scan.json --scope scope.txt
 
-# Run the passive checks (DNS/registry) after a typed yes. Records each
+# Run the checks after a typed yes. The passive ones always run; the active
+# one (around the CDN) runs only for hosts the scope allows. Records each
 # verdict, with its evidence, to an append-only history per target.
 akashi verify scan.json --scope scope.txt
+
+# Some bug bounty programs want an identifying header on active traffic. Put it
+# in a file (one "Name: value" per line); it's hashed, shown in the plan, and
+# sent on the active requests only.
+akashi verify scan.json --scope scope.txt --research research.txt
 ```
 
 `scan.json` is a Monomi scan saved with `monomi --json`, from Monomi v1.15.0 or
@@ -71,8 +78,9 @@ they need no scope.
 ## Guardrails
 
 - Active checks are fail-closed: no scope, no active check.
-- The plan is shown in full and sent only after a typed `yes` (in `verify`, next).
+- The plan is shown in full and sent only after a typed `yes`.
 - Only the approved plan is sent — no newly found hosts, no extra URLs.
+- Every active request is logged to `scans/active.log` before it goes out.
 - A partial result is **inconclusive**, never "confirmed".
 
 ## License

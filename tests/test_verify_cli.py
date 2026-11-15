@@ -56,12 +56,27 @@ def test_verify_takeover_scan_records_both(monkeypatch, tmp_path, capsys):
     assert {r["status"] for r in rows} == {"confirmed", "inconclusive"}  # takeover + takeover_unknown
 
 
-def test_verify_notes_active_checks_not_run(monkeypatch, tmp_path, capsys):
+def test_verify_runs_active_check_with_scope(monkeypatch, tmp_path, capsys):
+    from akashi.proofs import around_cdn
+    # stub the network: origin serves the same site as the CDN -> confirmed
+    monkeypatch.setattr(around_cdn, "_send", lambda url, headers, verify: around_cdn.Fetched(
+        url, 200, {}, "<title>App</title>hi"))
     answer(monkeypatch, "yes")
     scope = conftest.write_scope(tmp_path, "origins.test\n*.origins.test\n")
     cli.main(["verify", conftest.cdn_and_email_scan(tmp_path), "--scope", scope])
     out = capsys.readouterr().out
-    assert "active check(s) (around the CDN) are not run in this step" in out
+    assert "around_cdn" in out and "can be bypassed" in out
+    # the active verdict was recorded alongside the email one
+    assert any(r["rule"] == "around_cdn" for r in state.history("origins.test"))
+
+
+def test_verify_without_scope_blocks_the_active_check(monkeypatch, tmp_path, capsys):
+    answer(monkeypatch, "yes")
+    cli.main(["verify", conftest.cdn_and_email_scan(tmp_path)])
+    out = capsys.readouterr().out
+    assert "blocked by scope" in out
+    # only the passive (email) verdict was recorded; nothing active ran
+    assert not any(r["rule"] == "around_cdn" for r in state.history("origins.test"))
 
 
 def test_verify_refuses_old_scan(monkeypatch, tmp_path, capsys):

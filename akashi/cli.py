@@ -11,6 +11,8 @@ import sys
 from monomi import scope as scope_mod
 
 from akashi import __version__, plan, state, verify
+from akashi.research import ResearchError
+from akashi.research import load as load_research
 from akashi.scan import PROVABLE, ScanError, load_scan, provable, scan_version, unhandled
 
 
@@ -24,6 +26,17 @@ def _load_scope(path: str):
     if problem:
         return None, problem
     return scope, None
+
+
+def _load_research(path: str):
+    """(Research or None, problem text or None). Optional: without it, active
+    requests just carry the Akashi User-Agent and no research header."""
+    if not path:
+        return None, None
+    try:
+        return load_research(path), None
+    except ResearchError as e:
+        return None, str(e)
 
 
 def _print_unhandled(scan):
@@ -113,43 +126,62 @@ def cmd_verify(args) -> int:
         print(f"akashi: {e}", file=sys.stderr)
         return 2
     scope, scope_problem = _load_scope(args.scope)
+    research, research_problem = _load_research(args.research)
     items = provable(scan)
     steps = plan.build(items, scope)
     _print_plan(scan, version, scope, scope_problem, steps)
     _print_unhandled(scan)
+    if research is not None:
+        print(f"Research header: {research.summary}  (sha256 {research.sha256[:12]}…)")
+    elif research_problem:
+        print(f"Research header: none usable — {research_problem}")
 
+    # Sort the provable leads into what will actually run. Active checks run
+    # only when scope made their plan step ready; the rest are reported blocked.
+    ready = {s.id for s in steps if s.active and s.ready}
     passive = [it for it in items if verify.is_passive(it)]
-    active = [it for it in items if not verify.is_passive(it)]
-    if active:
-        print(f"Note: {len(active)} active check(s) (around the CDN) are not run in this "
-              "step; they come in a later milestone.")
-    if not passive:
-        print("Nothing to verify passively in this scan.")
+    active = [it for it in items if verify.is_active(it) and it.get("id") in ready]
+    blocked = sum(1 for it in items if verify.is_active(it) and it.get("id") not in ready)
+    if blocked:
+        print(f"\n{blocked} active check(s) are blocked by scope and will not run.")
+    if not passive and not active:
+        print("Nothing to verify in this scan.")
         return 0
 
-    # The typed yes: the person sees the whole plan above, then confirms. These
-    # checks are passive (DNS/registry), but the habit of confirming every run
-    # is in place before the active checks exist. --yes never skips it.
-    print(f"\nRun {len(passive)} passive check(s) now? They query DNS/registry only and never "
-          "contact the target.")
+    # The typed yes: the person has seen the whole plan above (every request),
+    # and now confirms. The prompt says plainly whether anything active will be
+    # sent. --yes never skips it; the plan shown is the only thing sent.
+    bits = []
+    if passive:
+        bits.append(f"{len(passive)} passive (DNS/registry, never contact the target)")
+    if active:
+        bits.append(f"{len(active)} active (one request through the CDN and one to the "
+                    "origin, inside scope)")
+    print(f"\nRun {len(passive) + len(active)} check(s) now? " + "; ".join(bits) + ".")
     if _ask("Type yes to run, anything else to cancel: ").strip().lower() != "yes":
         print("Cancelled. Nothing was sent.")
         return 0
 
     print()
     target = scan.get("target", "unknown")
-    confirmed = ruled = incon = 0
+    tally = {"confirmed": 0, "ruled_out": 0, "inconclusive": 0}
     path = None
-    for item in passive:
-        v = verify.prove(item)
-        print(v.line())
-        for e in v.evidence:
+
+    def run(verdict):
+        nonlocal path
+        print(verdict.line())
+        for e in verdict.evidence:
             print(f"      {e}")
-        path = state.record(target, v)
-        confirmed += v.status == "confirmed"
-        ruled += v.status == "ruled_out"
-        incon += v.status == "inconclusive"
-    print(f"\n{confirmed} confirmed, {ruled} ruled out, {incon} inconclusive.")
+        path = state.record(target, verdict)
+        tally[verdict.status] = tally.get(verdict.status, 0) + 1
+
+    for item in passive:                       # passive first: nothing is sent
+        run(verify.prove(item))
+    for item in active:                        # then the active checks
+        run(verify.prove_active(item, scope=scope, research=research))
+
+    print(f"\n{tally['confirmed']} confirmed, {tally['ruled_out']} ruled out, "
+          f"{tally['inconclusive']} inconclusive.")
     if path:
         print(f"Saved to the proof history: {path}")
     return 0
@@ -166,9 +198,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--scope", help="scope file (same format as Monomi's): active checks stay inside it")
     p.set_defaults(func=cmd_plan)
 
-    v = sub.add_parser("verify", help="run the passive checks (DNS/registry) after a typed yes")
+    v = sub.add_parser("verify", help="run the checks after a typed yes (active ones need scope)")
     v.add_argument("scan", help="a saved Monomi scan, v1.15.0 or newer")
-    v.add_argument("--scope", help="scope file (same format as Monomi's)")
+    v.add_argument("--scope", help="scope file (same format as Monomi's): active checks stay inside it")
+    v.add_argument("--research", help="research-header file (Name: value per line); sent on active requests")
     v.set_defaults(func=cmd_verify)
     return parser
 
