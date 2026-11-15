@@ -30,6 +30,7 @@ class Verdict:
     owner: str = ""                     # who typically owns that fix
     key: str = ""                       # stable lead key (scan.lead_key), used by recheck
     reason: str = ""                    # why it's inconclusive, when code knows (e.g. ORIGIN_SILENT)
+    facts: dict = field(default_factory=dict)      # structured facts a fix is built from (email, v0.1.3)
 
     def line(self) -> str:
         mark = {CONFIRMED: "✓", RULED_OUT: "✗", INCONCLUSIVE: "?"}.get(self.status, "?")

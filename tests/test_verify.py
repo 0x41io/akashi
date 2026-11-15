@@ -119,3 +119,28 @@ def test_a_lookup_failure_is_inconclusive(monkeypatch):
     monkeypatch.setattr(dnscheck, "get_cname", boom)
     v = verify.prove(takeover_item())
     assert v.status == INCONCLUSIVE and "could not complete" in v.headline
+
+
+def test_email_verdict_records_its_facts_and_a_tailored_fix(monkeypatch):
+    # v0.1.3: the proof keeps what it found, and the fix is built from it
+    monkeypatch.setattr(emailauth, "check_email", lambda domain: {
+        "spf": emailauth.check_spf(["v=spf1 include:_spf.google" + ".com ~all"]),
+        "dmarc": emailauth.check_dmarc(["v=DMARC1;p=none"]),
+        "dkim": {"record": "google", "selectors": ["google"], "issues": []},
+        "verdict": {"verdict": "spoofable", "summary": "", "notes": []}})
+    v = verify.prove(email_item())
+    assert v.status == "confirmed"
+    assert v.facts["dkim"] == ["google"] and v.facts["dmarc_rua"] is False
+    assert "DKIM: google selector found" in v.evidence
+    assert "DMARC reports (rua): none set" in v.evidence
+    assert "SPF record: present (~all)" in v.evidence
+    assert v.fix[0].startswith("Add a reporting address") and "email admin" in v.owner
+
+
+def test_no_dmarc_record_is_not_called_p_none(monkeypatch):
+    monkeypatch.setattr(emailauth, "check_email", lambda domain: {
+        "spf": emailauth.check_spf([]), "dmarc": emailauth.check_dmarc([]),
+        "dkim": {"record": None, "selectors": [], "issues": []},
+        "verdict": {"verdict": "spoofable", "summary": "", "notes": []}})
+    v = verify.prove(email_item())
+    assert "DMARC policy now: no DMARC record" in v.evidence

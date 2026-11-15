@@ -47,7 +47,8 @@ def _with_fix(item: dict, verdict: Verdict) -> Verdict:
     rule and targets, like the verdict itself."""
     verdict.key = lead_key(item)
     if verdict.status == CONFIRMED:
-        verdict.fix, verdict.owner = fixes.for_rule(verdict.rule, item.get("targets") or {})
+        verdict.fix, verdict.owner = fixes.for_rule(verdict.rule, item.get("targets") or {},
+                                                    verdict.facts)
     return verdict
 
 

@@ -36,10 +36,19 @@ lead is without reading its text.
 | `takeover` (claimable service) | Re-check now that the dangling CNAME still points at the deleted target and that the target still doesn't exist, on both DoH resolvers. Never claims the name. | No — DNS only |
 | `takeover_unknown` | The same DNS re-check, plus a registry (RDAP) lookup: if the target's domain is registered, an attacker can't claim it (ruled out); otherwise inconclusive, since claiming a domain is a human decision | No — DNS + registry |
 | `around_cdn` | One request to the fronted host through the CDN, one to the origin IP with the same `Host` header; compare the responses. A stock default page or a short generic title never counts as a match | Yes — one request each |
-| `email_spoofing` | Fresh SPF / DMARC / DKIM lookup | No — DNS only |
+| `email_spoofing` | Fresh SPF / DMARC / DKIM lookup. The evidence names the SPF `all` rule, the DKIM selectors found and whether DMARC reports (`rua=`) are collected, and the fix is built from that setup (v0.1.3): reports first, what's already in place, the senders SPF lists, then enforce | No — DNS only |
 
 Every verdict is **confirmed**, **ruled out**, or **inconclusive** (the default),
 and carries its evidence.
+
+**Fixes fit the target (v0.1.3).** An email fix is built from what the live
+check found, by code: a domain with SPF and DKIM but no DMARC reports is told to
+collect reports first and that SPF and DKIM are already in place; a domain that
+says it sends no mail (`v=spf1 -all`, no DKIM) can go straight to `p=reject`; a
+domain with neither is given both paths. Only hostname-like `include:` names
+from the target's SPF record ever reach the fix text. The facts behind a fix are
+saved on the verdict (`facts`) in the proof history; history from before v0.1.3
+keeps the general steps.
 
 ## Install
 
