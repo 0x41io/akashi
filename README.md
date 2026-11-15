@@ -1,4 +1,10 @@
-# akashi
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/0x41io/akashi/main/assets/akashi-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/0x41io/akashi/main/assets/akashi-light.png">
+    <img src="https://raw.githubusercontent.com/0x41io/akashi/main/assets/akashi-banner.png" alt="ʌkʌshi by 0x41" width="361">
+  </picture>
+</p>
 
 **Monomi finds. Akashi proves. Kaidoku explains.**
 
