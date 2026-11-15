@@ -51,7 +51,11 @@ def _print_unhandled(scan):
     print()
 
 
-def _print_plan(scan, version, scope, scope_problem, steps):
+PLAN_FOOTER = "`plan` sends nothing. `akashi verify` (after a typed yes) runs the ready checks."
+RECHECK_FOOTER = "`recheck` re-runs these checks after a typed yes to see if the fix closed them."
+
+
+def _print_plan(scan, version, scope, scope_problem, steps, footer=PLAN_FOOTER):
     target = scan.get("target", "?")
     print(f"Akashi plan for {target}  (from Monomi {'.'.join(map(str, version))})")
     if scope is not None:
@@ -93,7 +97,7 @@ def _print_plan(scan, version, scope, scope_problem, steps):
     if active_blocked:
         bits.append(f"{active_blocked} active blocked by scope")
     print("Would check: " + ", ".join(bits) + ".")
-    print("`plan` sends nothing. `akashi verify` (after a typed yes) runs the ready checks.")
+    print(footer)
 
 
 def cmd_plan(args) -> int:
@@ -192,6 +196,87 @@ def cmd_verify(args) -> int:
     return 0
 
 
+def _transition(verdict):
+    """How a re-checked verdict reads against the fix: it was confirmed before,
+    so ruled-out now means the fix worked."""
+    if verdict.status == "ruled_out":
+        return "✓", "fixed", "closed since the last check"
+    if verdict.status == "confirmed":
+        return "✗", "still open", "the fix hasn't closed this (or wasn't applied yet)"
+    return "?", "unclear", "couldn't confirm the fix right now; re-check again"
+
+
+def cmd_recheck(args) -> int:
+    try:
+        scan = load_scan(args.scan)
+        version = scan_version(scan)
+    except ScanError as e:
+        print(f"akashi: {e}", file=sys.stderr)
+        return 2
+    scope, scope_problem = _load_scope(args.scope)
+    research, research_problem = _load_research(args.research)
+    target = scan.get("target", "unknown")
+
+    # Only re-check leads whose latest recorded verdict was "confirmed": those
+    # are the ones you proved, then set out to fix. Matched by rule + id in the
+    # same saved scan, so re-check the scan you verified.
+    pending = [it for it in provable(scan)
+               if (state.latest(target, it.get("rule"), it.get("id")) or {}).get("status") == "confirmed"]
+
+    print(f"Akashi re-check for {target}  (from Monomi {'.'.join(map(str, version))})")
+    if not pending:
+        print("No confirmed leads to re-check. Run `akashi verify` first, apply a fix, "
+              "then re-check.")
+        return 0
+    print()
+
+    steps = plan.build(pending, scope)
+    _print_plan(scan, version, scope, scope_problem, steps, footer=RECHECK_FOOTER)
+    if research is not None:
+        print(f"Research header: {research.summary}  (sha256 {research.sha256[:12]}…)")
+
+    ready = {s.id for s in steps if s.active and s.ready}
+    passive = [it for it in pending if verify.is_passive(it)]
+    active = [it for it in pending if verify.is_active(it) and it.get("id") in ready]
+    blocked = sum(1 for it in pending if verify.is_active(it) and it.get("id") not in ready)
+    if blocked:
+        print(f"\n{blocked} active re-check(s) are blocked by scope and will not run.")
+    if not passive and not active:
+        print("Nothing to re-check (the confirmed leads need scope for their active checks).")
+        return 0
+
+    bits = []
+    if passive:
+        bits.append(f"{len(passive)} passive (DNS/registry, never contact the target)")
+    if active:
+        bits.append(f"{len(active)} active (one request through the CDN and one to the "
+                    "origin, inside scope)")
+    print(f"\nRe-run {len(passive) + len(active)} check(s) now? " + "; ".join(bits) + ".")
+    if _ask("Type yes to run, anything else to cancel: ").strip().lower() != "yes":
+        print("Cancelled. Nothing was sent.")
+        return 0
+
+    print()
+    fixed = still_open = unclear = 0
+    path = None
+    for item in passive + active:
+        v = verify.prove(item) if verify.is_passive(item) else \
+            verify.prove_active(item, scope=scope, research=research)
+        mark, label, detail = _transition(v)
+        print(f"[{v.id}] {v.rule}: {mark} {label} — {detail}")
+        for e in v.evidence:
+            print(f"      {e}")
+        path = state.record(target, v)
+        fixed += v.status == "ruled_out"
+        still_open += v.status == "confirmed"
+        unclear += v.status == "inconclusive"
+
+    print(f"\n{fixed} fixed, {still_open} still open, {unclear} unclear.")
+    if path:
+        print(f"Saved to the proof history: {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="akashi", description="0x41 / akashi - prove Monomi's leads, then fix and re-check")
@@ -208,6 +293,12 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--scope", help="scope file (same format as Monomi's): active checks stay inside it")
     v.add_argument("--research", help="research-header file (Name: value per line); sent on active requests")
     v.set_defaults(func=cmd_verify)
+
+    r = sub.add_parser("recheck", help="re-run the checks for leads confirmed before, to see if the fix closed them")
+    r.add_argument("scan", help="the Monomi scan you verified, v1.15.0 or newer")
+    r.add_argument("--scope", help="scope file (same format as Monomi's)")
+    r.add_argument("--research", help="research-header file (Name: value per line); sent on active requests")
+    r.set_defaults(func=cmd_recheck)
     return parser
 
 

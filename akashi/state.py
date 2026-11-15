@@ -38,3 +38,12 @@ def history(target: str) -> list:
         return []
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+def latest(target: str, rule: str, lead_id: str):
+    """The most recent recorded verdict for a lead (matched by rule + id),
+    or None. Used by `recheck` to find what was confirmed before."""
+    for row in reversed(history(target)):
+        if row.get("rule") == rule and row.get("id") == lead_id:
+            return row
+    return None

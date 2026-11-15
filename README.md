@@ -17,13 +17,14 @@ It is not an autonomous pentester. It never picks its own targets, never runs
 exploits, and never changes anything on a target. Every active check stays
 inside an approved scope and waits for a typed `yes`.
 
-> Status: **v0.1, in progress.** `plan` (show what would be checked, send
-> nothing) and `verify` are built. The passive checks — the takeover re-check
-> over DNS, the registry (RDAP) lookup that settles an unknown-service
-> takeover, and the email re-check — plus the one active check (going around
-> the CDN, inside scope) all run after a typed yes, and a **confirmed** lead
-> prints the exact fix to close it. `recheck` (re-run after the fix to prove
-> it's closed) is next.
+> Status: **v0.1, feature-complete.** `plan` (show what would be checked, send
+> nothing), `verify` (run the checks after a typed yes), and `recheck` (re-run
+> a confirmed lead after you fix it, to prove it's closed) are all built. The
+> passive checks — the takeover re-check over DNS, the registry (RDAP) lookup
+> that settles an unknown-service takeover, and the email re-check — plus the
+> one active check (going around the CDN, inside scope) run after a typed yes,
+> and a **confirmed** lead prints the exact fix to close it. The full
+> **prove, fix, re-check** loop is in place.
 
 ## What it proves (v0.1)
 
@@ -68,6 +69,11 @@ akashi verify scan.json --scope scope.txt
 # in a file (one "Name: value" per line); it's hashed, shown in the plan, and
 # sent on the active requests only.
 akashi verify scan.json --scope scope.txt --research research.txt
+
+# After fixing a confirmed lead, re-run its check to prove it's closed. Only
+# leads that were confirmed before are re-checked; each reports fixed, still
+# open, or unclear, and the result is appended to the proof history.
+akashi recheck scan.json --scope scope.txt
 ```
 
 `scan.json` is a Monomi scan saved with `monomi --json`, from Monomi v1.15.0 or
