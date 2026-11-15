@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from akashi.scan import MIN_MONOMI, PROVABLE, ScanError, load_scan, provable, scan_version
+from akashi.scan import MIN_MONOMI, PROVABLE, ScanError, load_scan, provable, scan_version, unhandled
 import conftest
 
 
@@ -63,3 +63,15 @@ def test_provable_skips_rules_akashi_cant_prove_yet(tmp_path):
     scan = load_scan(conftest.cdn_and_email_scan(tmp_path))
     scan["paths"]["leads"].append({"id": "L9", "rule": "side_door", "targets": {"hosts": ["x"], "ips": ["y"]}})
     assert "side_door" not in {i["rule"] for i in provable(scan)}
+
+
+def test_unhandled_lists_rules_akashi_cant_prove(tmp_path):
+    from akashi.scan import unhandled
+    scan = load_scan(conftest.cdn_and_email_scan(tmp_path))
+    scan["paths"]["leads"].append({"id": "L9", "rule": "side_door",
+                                   "targets": {"hosts": ["x"], "ips": ["y"]}})
+    left = unhandled(scan)
+    assert [i["rule"] for i in left] == ["side_door"]
+    assert left[0]["id"] == "L9" and left[0]["where"] == "lead"
+    # nothing provable shows up as unhandled, and nothing unhandled is provable
+    assert not ({i["rule"] for i in left} & set(PROVABLE))

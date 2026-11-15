@@ -83,3 +83,16 @@ def provable(scan: dict) -> list[dict]:
         if item.get("rule") in PROVABLE:
             out.append({**item, "where": where})
     return out
+
+
+def unhandled(scan: dict) -> list[dict]:
+    """The scan's findings and leads whose rule Akashi v0.1 can't prove yet.
+
+    Surfaced so nothing is skipped silently: the plan names them instead of
+    quietly dropping them.
+    """
+    out = []
+    for where, item in items(scan):
+        if item.get("rule") not in PROVABLE:
+            out.append({**item, "where": where})
+    return out

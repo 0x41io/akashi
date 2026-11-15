@@ -11,7 +11,7 @@ import sys
 from monomi import scope as scope_mod
 
 from akashi import __version__, plan
-from akashi.scan import ScanError, load_scan, provable, scan_version
+from akashi.scan import PROVABLE, ScanError, load_scan, provable, scan_version, unhandled
 
 
 def _load_scope(path: str):
@@ -24,6 +24,18 @@ def _load_scope(path: str):
     if problem:
         return None, problem
     return scope, None
+
+
+def _print_unhandled(scan):
+    """Name the leads Akashi can't prove yet, so none is dropped silently."""
+    left = unhandled(scan)
+    if not left:
+        return
+    print("Not handled yet (Akashi v0.1 proves " + ", ".join(PROVABLE) + "):")
+    for item in left:
+        rule = item.get("rule", "?")
+        print(f"  [{item.get('id', '?')}] {rule}  ({item.get('where', 'lead')})")
+    print()
 
 
 def _print_plan(scan, version, scope, scope_problem, steps):
@@ -81,6 +93,7 @@ def cmd_plan(args) -> int:
     scope, scope_problem = _load_scope(args.scope)
     steps = plan.build(provable(scan), scope)
     _print_plan(scan, version, scope, scope_problem, steps)
+    _print_unhandled(scan)
     return 0
 
 

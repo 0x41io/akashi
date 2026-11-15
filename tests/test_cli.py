@@ -44,3 +44,15 @@ def test_plan_passive_only_scan_says_so(tmp_path, capsys):
     # takeover + takeover_unknown are both passive
     assert "passive (DNS/registry, never touches the target)" in out
     assert "would send:" not in out
+
+
+def test_plan_names_unhandled_leads(tmp_path, capsys):
+    import json
+    path = conftest.cdn_and_email_scan(tmp_path)
+    scan = json.loads(open(path).read())
+    scan["paths"]["leads"].append({"id": "L9", "rule": "side_door",
+                                   "targets": {"hosts": ["x"], "ips": ["y"]}})
+    open(path, "w").write(json.dumps(scan))
+    main(["plan", path])
+    out = capsys.readouterr().out
+    assert "Not handled yet" in out and "[L9] side_door" in out
