@@ -14,6 +14,7 @@ from akashi import __version__, plan, state, verify
 from akashi.research import ResearchError
 from akashi.research import load as load_research
 from akashi.scan import PROVABLE, ScanError, lead_key, load_scan, provable, scan_version, unhandled
+from akashi.scan import items as all_items
 from akashi.ui import banner
 from akashi.verdict import ORIGIN_SILENT
 
@@ -70,7 +71,12 @@ def _print_plan(scan, version, scope, scope_problem, steps, footer=PLAN_FOOTER):
     print()
 
     if not steps:
-        print("No leads Akashi can prove yet in this scan.")
+        # Two different situations, so two different lines: a clean scan, or
+        # leads that are only of types Akashi doesn't prove yet (listed next).
+        if any(True for _ in all_items(scan)):
+            print("No leads Akashi can prove yet in this scan (listed below).")
+        else:
+            print("Monomi found no leads in this scan: nothing to verify.")
         return
 
     active_ready = active_blocked = passive = 0
@@ -151,7 +157,8 @@ def cmd_verify(args) -> int:
     if blocked:
         print(f"\n{blocked} active check(s) are blocked by scope and will not run.")
     if not passive and not active:
-        print("Nothing to verify in this scan.")
+        if steps:  # there were leads, but every one is blocked (the plan said so above)
+            print("Nothing to verify in this scan.")
         return 0
 
     # The typed yes: the person has seen the whole plan above (every request),

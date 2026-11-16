@@ -6,4 +6,4 @@ scan (v1.15.0+), confirms or rules out each lead with evidence, and never
 touches a target except inside an approved scope after a person says yes.
 """
 
-__version__ = "0.1.3"
+__version__ = "0.2.0"

@@ -93,6 +93,28 @@ around the CDN) only runs against hosts it allows, and is shown as blocked
 without it. The passive checks (DNS and registry) never contact the target, so
 they need no scope.
 
+### As a library (v0.2)
+
+The 0x41 pipeline (`0x41 run`) calls Akashi directly. All three functions are
+quiet (they print nothing) and use the same scope, plan and proofs as the
+`akashi` command:
+
+```python
+from akashi import api
+
+p = api.plan("scan.json", scope_path="scope.txt")      # what it would check; sends nothing
+out = api.prove_passive("scan.json")                    # DNS / registry only, never the target
+out = api.prove_active("scan.json", "scope.txt", approved_ids=["L2"])
+```
+
+`prove_passive()` runs without asking, because its checks never contact the
+target; the `akashi verify` command still asks first. `prove_active()` never
+decides anything itself: it needs a usable scope file and runs only the leads
+the caller lists in `approved_ids` that the plan marked ready, so the caller
+must show the plan and get a person's yes first. Every verdict goes into the
+proof history, so `akashi recheck` works on them. What these return is locked
+by `tests/test_api.py`.
+
 ## Known limits
 
 - **Origins that require SNI.** The origin request goes to a bare IP, so it can't
@@ -116,6 +138,8 @@ they need no scope.
 - Only the approved plan is sent — no newly found hosts, no extra URLs.
 - Every active request is logged to `scans/active.log` before it goes out.
 - A partial result is **inconclusive**, never "confirmed".
+- Through the library, active checks run only for lead IDs a person approved
+  (`approved_ids`), only inside scope, and never without a scope file.
 
 ## License
 
