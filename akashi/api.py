@@ -27,7 +27,7 @@ updated.
 
 from dataclasses import asdict
 
-from akashi import __version__, plan as plan_mod, state, verify
+from akashi import __version__, activelog, plan as plan_mod, state, verify
 from akashi.cli import _load_research, _load_scope
 from akashi.scan import load_scan, provable, scan_version, unhandled
 
@@ -86,8 +86,13 @@ def prove_passive(scan_path: str, record: bool = True) -> dict:
 
 
 def prove_active(scan_path: str, scope_path: str, approved_ids: list,
-                 research_path: str | None = None, record: bool = True) -> dict:
+                 research_path: str | None = None, record: bool = True,
+                 via: str = "cli", approval: str | None = None) -> dict:
     """Run the active proofs a person approved, inside scope.
+
+    via / approval go into every active.log line of this run: "mcp" plus the
+    approval id when 0x41 runs a proof a person approved in a terminal for an
+    agent; the default "cli" otherwise.
 
     Only leads that are both in approved_ids AND marked ready by the plan
     (active, in scope) run; any other approved id is returned in "skipped"
@@ -117,5 +122,6 @@ def prove_active(scan_path: str, scope_path: str, approved_ids: list,
         else:
             run.append(next(it for it in items if it.get("id") == lead_id))
 
-    verdicts = [verify.prove_active(it, scope=scope, research=research) for it in run]
+    with activelog.context(via=via, approval=approval):
+        verdicts = [verify.prove_active(it, scope=scope, research=research) for it in run]
     return {**_header(scan), **_run(scan.get("target", "unknown"), verdicts, record), "skipped": skipped}

@@ -157,3 +157,54 @@ def test_a_clean_scan_says_monomi_found_nothing(tmp_path, capsys):
     assert "Monomi found no leads in this scan: nothing to verify." in out
     assert "Nothing to verify in this scan." not in out                 # said once, not twice
     assert "yet" not in out.split("Monomi found")[1].split("\n")[0]
+
+
+# ---------- active.log: who started the run (v0.2.2, for 0x41 issue #2) ----------
+
+def log_lines(tmp_path):
+    from akashi import activelog
+    with open(activelog.path(), encoding="utf-8") as f:
+        return [json.loads(line) for line in f]
+
+
+def cdn_lead(tmp_path):
+    scan = conftest.cdn_and_email_scan(tmp_path)
+    return scan, next(s["id"] for s in api.plan(scan, scope(tmp_path))["steps"] if s["rule"] == "around_cdn")
+
+
+def test_a_run_through_an_mcp_approval_says_so_on_every_line(tmp_path, origin_answers):
+    scan, cdn_id = cdn_lead(tmp_path)
+    api.prove_active(scan, scope(tmp_path), approved_ids=[cdn_id], via="mcp", approval="k7m2-x9pq")
+    lines = log_lines(tmp_path)
+    assert len(lines) == 2 and all(e["event"] == "request" for e in lines)
+    assert all(e["via"] == "mcp" and e["approval"] == "k7m2-x9pq" for e in lines)
+
+
+def test_a_normal_run_still_says_cli_and_has_no_approval(tmp_path, origin_answers):
+    scan, cdn_id = cdn_lead(tmp_path)
+    api.prove_active(scan, scope(tmp_path), approved_ids=[cdn_id])
+    lines = log_lines(tmp_path)
+    assert lines and all(e["via"] == "cli" and "approval" not in e for e in lines)
+
+
+def test_the_context_ends_with_the_run(tmp_path, origin_answers):
+    from akashi import activelog
+    scan, cdn_id = cdn_lead(tmp_path)
+    api.prove_active(scan, scope(tmp_path), approved_ids=[cdn_id], via="mcp", approval="k7m2-x9pq")
+    activelog.refused("around_cdn", "later, from the command line")
+    last = log_lines(tmp_path)[-1]
+    assert last["via"] == "cli" and "approval" not in last
+
+
+def test_refusals_carry_it_too(tmp_path, origin_answers):
+    from akashi import activelog
+    with activelog.context(via="mcp", approval="k7m2-x9pq"):
+        activelog.refused("around_cdn", "www.origins.test out of scope", host="www.origins.test")
+    assert log_lines(tmp_path)[-1] | {"time": None} == {
+        "time": None, "event": "refused", "via": "mcp", "approval": "k7m2-x9pq", "tool": "around_cdn",
+        "host": "www.origins.test", "reason": "www.origins.test out of scope", "scope_sha256": None}
+
+
+def test_via_is_cli_or_mcp_only(tmp_path):
+    with pytest.raises(ValueError, match="via must be one of"):
+        api.prove_active(conftest.cdn_and_email_scan(tmp_path), scope(tmp_path), approved_ids=[], via="web")

@@ -95,7 +95,7 @@ they need no scope.
 
 ### As a library (v0.2)
 
-The 0x41 pipeline (`0x41 run`) calls Akashi directly. All three functions are
+The 0x41 pipeline (`0x41 vet`) calls Akashi directly. All three functions are
 quiet (they print nothing) and use the same scope, plan and proofs as the
 `akashi` command:
 
@@ -114,6 +114,12 @@ the caller lists in `approved_ids` that the plan marked ready, so the caller
 must show the plan and get a person's yes first. Every verdict goes into the
 proof history, so `akashi recheck` works on them. What these return is locked
 by `tests/test_api.py`.
+
+`prove_active(..., via="mcp", approval="<id>")` (v0.2.2) marks every
+`scans/active.log` line of that run with where it came from: 0x41 uses it for
+an active proof an agent asked for and a person approved in a terminal
+(`0x41 approve`), so the log ties each request to its approval. The default is
+`via="cli"`, with no approval.
 
 ## Known limits
 
@@ -136,7 +142,8 @@ by `tests/test_api.py`.
 - Active checks are fail-closed: no scope, no active check.
 - The plan is shown in full and sent only after a typed `yes`.
 - Only the approved plan is sent — no newly found hosts, no extra URLs.
-- Every active request is logged to `scans/active.log` before it goes out.
+- Every active request is logged to `scans/active.log` before it goes out,
+  with `via` (`cli`, or `mcp` plus the approval id when 0x41 ran it).
 - A partial result is **inconclusive**, never "confirmed".
 - Through the library, active checks run only for lead IDs a person approved
   (`approved_ids`), only inside scope, and never without a scope file.
