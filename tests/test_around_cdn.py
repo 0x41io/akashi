@@ -166,3 +166,14 @@ def test_tls_reset_is_not_ruled_out(tmp_path):
     send = _sender(error="SSLError: ('Connection reset by peer')")
     v = around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=send)
     assert v.status == "inconclusive"
+
+
+def test_the_audit_log_records_the_scope_rule_not_the_host(tmp_path):
+    """Found in the live check of 0x41 v0.4.0: scope_rule said the host
+    (www.41xlab.com) instead of the rule that allowed it (*.41xlab.com)."""
+    logged = []
+    around_cdn.prove(_item(tmp_path), scope=_scope(tmp_path), send=_sender(),
+                     log=lambda host, url, rule: logged.append((host, rule)))
+    assert len(logged) == 2
+    assert all(rule == "*.origins.test" for _, rule in logged)
+    assert all(host != rule for host, rule in logged)

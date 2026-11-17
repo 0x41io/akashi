@@ -169,7 +169,9 @@ def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
 
     cdn_url = f"https://{front}/"
     origin_url = f"https://{ip}/"
-    rule = front  # what we matched in scope; recorded in the audit log
+    # The scope rule that allowed it (e.g. "*.example.com"), recorded in the
+    # audit log like mønømi does. Not the host: that's in the log line already.
+    rule = scope.match(front).rule
 
     # Request 1: the normal way in, through the CDN.
     if log:
