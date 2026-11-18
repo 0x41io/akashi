@@ -17,6 +17,26 @@ It is not an autonomous pentester. It never picks its own targets, never runs
 exploits, and never changes anything on a target. Every active check stays
 inside an approved scope and waits for a typed `yes`.
 
+## Only reports what it can prove
+
+AI security tools have a reputation problem: reports full of flaws that turn
+out not to exist. Akashi is built the other way around.
+
+- **Unproven until proven.** Every verdict starts as **inconclusive**. Only
+  evidence from a check moves it to **confirmed** or **ruled out**, and a
+  partial result never counts as confirmed.
+- **Every verdict carries its evidence.** The DNS answers, registry record, or
+  HTTP responses behind it are saved to an append-only history, so anyone can
+  check how the call was made.
+- **No AI makes the call.** Akashi's checks are plain code that give the same
+  answer every run. [Kaidoku](https://github.com/0x41io/kaidoku) can explain a
+  verdict in plain English, but it never changes one.
+- **"Unclear" is an honest answer.** When the evidence can't settle it (a
+  timeout, a firewall that drops traffic, a stock default page), Akashi says so
+  instead of guessing.
+- **A fix isn't done until it's re-checked.** `recheck` runs the same check
+  again and records fixed, still open, or unclear.
+
 > Status: **v0.1, feature-complete.** `plan` (show what would be checked, send
 > nothing), `verify` (run the checks after a typed yes), and `recheck` (re-run
 > a confirmed lead after you fix it, to prove it's closed) are all built. The
