@@ -77,6 +77,20 @@ def test_unhandled_lists_rules_akashi_cant_prove(tmp_path):
     assert not ({i["rule"] for i in left} & set(PROVABLE))
 
 
+def test_dangling_ns_from_monomi_is_named_not_proved(tmp_path):
+    # Monomi v1.17's new rule: Akashi has no proof for it yet, so it must be
+    # listed as unhandled (never dropped, never handed to a proof)
+    scan = load_scan(conftest.dangling_ns_scan(tmp_path))
+    assert scan_version(scan) >= (1, 17, 0)
+    assert "dangling_ns" not in PROVABLE
+    assert provable(scan) == []
+    left = unhandled(scan)
+    assert [i["rule"] for i in left] == ["dangling_ns"]
+    t = left[0]["targets"]
+    assert t["cut"] == "lame.lame-ns.test" and t["grade"] == "theoretical"
+    assert sorted(t["hosts"]) == ["app.lame.lame-ns.test", "www.lame.lame-ns.test"]
+
+
 # ---------- lead_key: a stable name from rule + targets (v0.1.1) ----------
 
 def test_lead_key_takeover_uses_host_and_cname():

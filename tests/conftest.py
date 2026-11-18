@@ -106,6 +106,29 @@ def cdn_and_email_scan(tmp_path):
     return _save(results, tmp_path, "cdn.json")
 
 
+def dangling_ns_scan(tmp_path):
+    """A scan with a lame (dangling NS) delegation (rule dangling_ns, new in
+    Monomi v1.17): a subzone delegated to AWS Route 53 nameservers that
+    refuse it, with two hosts under it. Akashi can't prove it yet."""
+    hosts = ["app.lame.lame-ns.test", "www.lame.lame-ns.test"]
+    results = {
+        "target": "lame-ns.test",
+        "sources": {"hosts file": {"source": "hosts file", "subdomains": hosts, "collected_at": T}},
+        "errors": {},
+        "subdomains": sorted(hosts),
+        "takeover": {
+            "leads": [], "stale": [],
+            "results": {h: {"status": "servfail", "cname": None} for h in hosts},
+            "checked": 2, "errors": {h: "DNS-over-HTTPS servers returned SERVFAIL" for h in hosts},
+            "ns_delegations": [{
+                "cut": "lame.lame-ns.test", "hosts": hosts, "ns_ips": ["205.251.192.0"],
+                "detail": "EDE(22): No Reachable Authority at delegation lame.lame-ns.test",
+                "collected_at": T, "grade": "theoretical", "provider": "AWS Route 53"}],
+            "collected_at": T},
+    }
+    return _save(results, tmp_path, "lame.json")
+
+
 def write_scope(tmp_path, text):
     path = tmp_path / "scope.txt"
     path.write_text(text, encoding="utf-8")

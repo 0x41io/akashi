@@ -46,6 +46,13 @@ def test_plan_passive_only_scan_says_so(tmp_path, capsys):
     assert "would send:" not in out
 
 
+def test_plan_names_a_dangling_ns_lead(tmp_path, capsys):
+    code = main(["plan", conftest.dangling_ns_scan(tmp_path)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Not handled yet" in out and "dangling_ns" in out
+
+
 def test_plan_names_unhandled_leads(tmp_path, capsys):
     import json
     path = conftest.cdn_and_email_scan(tmp_path)
