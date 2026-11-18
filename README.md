@@ -37,16 +37,18 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.1, feature-complete.** `plan` (show what would be checked, send
-> nothing), `verify` (run the checks after a typed yes), and `recheck` (re-run
-> a confirmed lead after you fix it, to prove it's closed) are all built. The
-> passive checks — the takeover re-check over DNS, the registry (RDAP) lookup
-> that settles an unknown-service takeover, and the email re-check — plus the
-> one active check (going around the CDN, inside scope) run after a typed yes,
-> and a **confirmed** lead prints the exact fix to close it. The full
-> **prove, fix, re-check** loop is in place.
+> Status: **v0.2.3.** The full **prove, fix, re-check** loop is built: `plan`
+> (show what would be checked, send nothing), `verify` (run the checks after a
+> typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
+> it's closed). The passive checks (the takeover re-check over DNS, the registry
+> (RDAP) lookup for an unknown-service takeover, and the email re-check) never
+> touch the target; the one active check (going around the CDN) runs only
+> inside scope. A **confirmed** lead prints the exact fix to close it. Since
+> v0.2, a library API (`akashi.api`) lets the [0x41](https://github.com/0x41io/0x41)
+> pipeline run Akashi too (`0x41 vet`, and from Claude over MCP), with every
+> active request logged with who started it and which approval allowed it.
 
-## What it proves (v0.1)
+## What it proves
 
 Akashi reads the typed fields Monomi writes since v1.15.0, so it knows what each
 lead is without reading its text.
