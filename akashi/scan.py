@@ -14,7 +14,7 @@ from monomi import common
 # targets on every finding (monomi/tests/test_contract.py locks them).
 MIN_MONOMI = (1, 15, 0)
 
-# The rules Akashi v0.1 knows how to prove. Everything else in a scan is left
+# The rules Akashi knows how to prove. Everything else in a scan is left
 # alone (reported as "not handled yet"), never guessed at.
 PROVABLE = ("takeover", "takeover_unknown", "email_spoofing", "around_cdn")
 
@@ -106,7 +106,7 @@ def lead_key(item: dict) -> str:
 
 
 def provable(scan: dict) -> list[dict]:
-    """The scan's findings and leads whose rule Akashi v0.1 can prove.
+    """The scan's findings and leads whose rule Akashi can prove.
 
     Each is returned as-is (it already carries ``id``, ``rule`` and
     ``targets``), with ``where`` added so the caller knows if Monomi had it as
@@ -120,7 +120,7 @@ def provable(scan: dict) -> list[dict]:
 
 
 def unhandled(scan: dict) -> list[dict]:
-    """The scan's findings and leads whose rule Akashi v0.1 can't prove yet.
+    """The scan's findings and leads whose rule Akashi can't prove yet.
 
     Surfaced so nothing is skipped silently: the plan names them instead of
     quietly dropping them.

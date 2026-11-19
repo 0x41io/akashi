@@ -2,5 +2,5 @@
 # (requests, dnspython, ...). Pinned to the release whose contract test
 # (monomi/tests/test_contract.py) locks the scan fields Akashi reads.
 # v1.16.0 since Akashi v0.2.1, so the 0x41 suite installs one Monomi.
-monomi @ git+https://github.com/0x41io/monomi@v1.17.0
+monomi @ git+https://github.com/0x41io/monomi@v1.17.1
 tldextract>=5

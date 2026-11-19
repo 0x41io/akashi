@@ -53,6 +53,14 @@ def test_plan_names_a_dangling_ns_lead(tmp_path, capsys):
     assert "Not handled yet" in out and "dangling_ns" in out
 
 
+def test_unhandled_line_names_no_old_version(tmp_path, capsys):
+    # v0.2.5: the line said "Akashi v0.1 proves" long after v0.1
+    main(["plan", conftest.dangling_ns_scan(tmp_path)])
+    out = capsys.readouterr().out
+    assert "Not handled yet (Akashi proves takeover," in out
+    assert "v0.1" not in out
+
+
 def test_plan_names_unhandled_leads(tmp_path, capsys):
     import json
     path = conftest.cdn_and_email_scan(tmp_path)

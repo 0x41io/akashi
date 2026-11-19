@@ -30,7 +30,7 @@ Then it compares:
       traffic looks like. A timeout can't prove that, so it never becomes
       ruled out, but the verdict says so plainly and what to do.
 
-This is the only check in v0.1 that touches a target, so it is fail-closed on
+This is the only check in Akashi that touches a target, so it is fail-closed on
 scope, logs both requests before sending, and carries the honest Akashi
 User-Agent plus the research header when one is loaded. It never follows
 redirects, never sends anything but these two requests, and never changes

@@ -1,7 +1,7 @@
 """
-Run the proofs. v0.1 runs the passive ones (DNS and registry): they ask public
-services about a name and never contact the target. The one active proof
-(around_cdn) is added in the next milestone.
+Run the proofs. The passive ones (DNS and registry) ask public services about
+a name and never contact the target. The one active proof (around_cdn) runs
+only inside scope, after the typed yes.
 
 The CLI handles showing the plan, the typed yes, printing and recording; this
 module just maps a lead to its proof and runs it, turning any failure into an

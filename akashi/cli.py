@@ -1,8 +1,8 @@
 """
-Akashi's command line. v0.1 has one command, `plan`, which reads a saved
-Monomi scan and prints what Akashi would check to prove each lead. It sends
-nothing and changes nothing: it's the safe first look before `verify` (later)
-does the checks after a typed yes.
+Akashi's command line: `plan` reads a saved Monomi scan and prints what
+Akashi would check to prove each lead (it sends nothing and changes nothing),
+`verify` runs those checks after a typed yes, and `recheck` re-runs a
+confirmed lead after the fix to see if it's closed.
 """
 
 import argparse
@@ -47,7 +47,7 @@ def _print_unhandled(scan):
     left = unhandled(scan)
     if not left:
         return
-    print("Not handled yet (Akashi v0.1 proves " + ", ".join(PROVABLE) + "):")
+    print("Not handled yet (Akashi proves " + ", ".join(PROVABLE) + "):")
     for item in left:
         rule = item.get("rule", "?")
         print(f"  [{item.get('id', '?')}] {rule}  ({item.get('where', 'lead')})")
