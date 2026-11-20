@@ -177,3 +177,24 @@ def test_the_audit_log_records_the_scope_rule_not_the_host(tmp_path):
     assert len(logged) == 2
     assert all(rule == "*.origins.test" for _, rule in logged)
     assert all(host != rule for host, rule in logged)
+
+
+# --- the research file is Monomi's parser (v0.2.7) ---------------------------
+
+def test_akashi_reads_research_files_with_monomis_parser():
+    import monomi.research
+    from akashi import research
+    assert research.load is monomi.research.load
+    assert research.Research is monomi.research.Research
+    assert research.ResearchError is monomi.research.ResearchError
+
+
+def test_research_values_are_stripped_and_host_is_refused(tmp_path):
+    import pytest
+    from akashi import research
+    p = tmp_path / "research.txt"
+    p.write_text("X-Bug-Bounty:  ok-handle \n")
+    assert research.load(str(p)).headers == {"X-Bug-Bounty": "ok-handle"}
+    p.write_text("Host: evil\n")
+    with pytest.raises(research.ResearchError, match="can't be set"):
+        research.load(str(p))
