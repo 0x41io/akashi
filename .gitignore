@@ -18,6 +18,9 @@ env/
 # Your own scope and research-header files (they name your targets)
 *scope.txt
 *research.txt
+# App-logic case files (they name your targets); creds files are *.json below
+*.toml
+!pyproject.toml
 
 # Akashi data (proof history, logs) and scans under test
 scans/
