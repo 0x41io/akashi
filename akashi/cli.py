@@ -317,6 +317,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--scope", help="scope file (same format as Monomi's)")
     r.add_argument("--research", help="research-header file (Name: value per line); sent on active requests")
     r.set_defaults(func=cmd_recheck)
+
+    from akashi.app import commands as app_commands
+    app_commands.register(sub)
     return parser
 
 
