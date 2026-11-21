@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.3.2.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.3.3.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -59,8 +59,9 @@ out not to exist. Akashi is built the other way around.
 > `akashi.api.prove_app()`), so [0x41](https://github.com/0x41io/0x41) can run one Claude asked for, after a
 > person's typed yes in a terminal.
 >
-> v0.3.2 only moves Akashi onto [mønømi](https://github.com/0x41io/monomi) v1.22.0 (new `management`
-> hostname category), so 0x41 can pin both to the same mønømi. Nothing Akashi proves changes.
+> v0.3.2 and v0.3.3 only move Akashi onto [mønømi](https://github.com/0x41io/monomi) v1.22.0 (new
+> `management` hostname category) and v1.22.1 (Microsoft 365 and Google's front end count as third-party
+> hosting), so 0x41 can pin both to the same mønømi. Nothing Akashi proves changes.
 
 ## What it proves
 
