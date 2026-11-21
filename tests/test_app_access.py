@@ -219,6 +219,7 @@ def fake_proof(monkeypatch, responses):
     def send(method, url, headers, body):
         return queue.pop(0)
     monkeypatch.setattr(access, "_send", send)
+    monkeypatch.setattr(access.time, "sleep", lambda s: None)   # no real 1 s pacing in tests
 
 
 def test_app_plan_sends_nothing(lab, capsys, monkeypatch):

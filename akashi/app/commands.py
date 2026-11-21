@@ -23,21 +23,27 @@ def _key(case) -> str:
     return f"access_between_accounts:{case.host}:{case.resource}:{case.actor}>{case.owner}"
 
 
-def _plan_lines(case) -> list:
-    """The exact requests the check would send, host by host, for the person
-    to read before any yes. No password is shown."""
-    r = case.resource_url
-    login = case.login_url
+def plan_requests(case) -> list:
+    """The exact requests the check sends, in order, as (method, url, purpose).
+    The one source for both the CLI plan and akashi.api.app_plan(), so what a
+    person approves and what runs can't drift. No password appears."""
+    r, login = case.resource_url, case.login_url
     return [
-        f"access check: can {case.actor} read {case.owner}'s {case.resource} at {case.host}?",
-        f"  POST {login}      log in as {case.owner}",
-        f"  GET  {r}          {case.owner} reads it (baseline, must be 200)",
-        f"  GET  {r}          with no login (is it simply public?)",
-        f"  POST {login}      log in as {case.actor}",
-        f"  GET  {r}          {case.actor} tries to read it",
-        "  5 requests total, GET only to the resource and POST only to the login path, "
-        "no redirects followed, 1 request/second.",
+        ("POST", login, f"log in as {case.owner}"),
+        ("GET", r, f"{case.owner} reads it (baseline, must be 200)"),
+        ("GET", r, "with no login (is it simply public?)"),
+        ("POST", login, f"log in as {case.actor}"),
+        ("GET", r, f"{case.actor} tries to read it"),
     ]
+
+
+def _plan_lines(case) -> list:
+    """The plan as a person reads it before any yes."""
+    lines = [f"access check: can {case.actor} read {case.owner}'s {case.resource} at {case.host}?"]
+    lines += [f"  {method:<4} {url}      {purpose}" for method, url, purpose in plan_requests(case)]
+    lines.append("  5 requests total, GET only to the resource and POST only to the login path, "
+                 "no redirects followed, 1 request/second.")
+    return lines
 
 
 def _load_case_scope_research(args, need_scope):

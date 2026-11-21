@@ -9,6 +9,11 @@ loading, plan and proofs as the `akashi` command, so the two can't drift:
     out = api.prove_passive("scan.json")                      # DNS/registry only
     out = api.prove_active("scan.json", "scope.txt", approved_ids=["L2"])
 
+Since v0.3.1, app-logic cases (a case file instead of a scan):
+
+    p = api.app_plan("notes-idor.toml", scope_path="scope.txt")   # sends nothing
+    out = api.prove_app("notes-idor.toml", "scope.txt", "creds.json", kind="verify")
+
 The safety rules, and where they live:
 - prove_passive() runs without asking: its checks only query public DNS
   resolvers and domain registries, never the target. (The `akashi verify`
@@ -19,6 +24,9 @@ The safety rules, and where they live:
   the plan and getting a person's yes first; the 0x41 command does that.
 - Every verdict is recorded in the proof history, like `akashi verify`, so
   `akashi recheck` works on leads proven through here.
+- prove_app() is active too, with the same rule: the caller shows app_plan()
+  and gets a person's yes first. It needs a usable scope file and a creds
+  file only its owner can read; passwords never appear in what it returns.
 
 What these return is a contract: tests/test_api.py locks the keys. Add keys
 freely; renaming or removing one needs API_VERSION bumped and the pipeline
@@ -125,3 +133,83 @@ def prove_active(scan_path: str, scope_path: str, approved_ids: list,
     with activelog.context(via=via, approval=approval):
         verdicts = [verify.prove_active(it, scope=scope, research=research) for it in run]
     return {**_header(scan), **_run(scan.get("target", "unknown"), verdicts, record), "skipped": skipped}
+
+
+# --- app-logic cases (v0.3.1) ---------------------------------------------------
+
+APP_KINDS = ("verify", "recheck")
+
+
+def _sha256(path: str) -> str:
+    import hashlib
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def app_plan(case_path: str, scope_path: str | None = None) -> dict:
+    """What an app-logic case would send. Sends nothing; needs no creds.
+
+    Returns akashi_version, api_version, target (the case's host), "case"
+    {path, sha256, type, host, resource, owner, actor}, "requests" (each
+    {method, url, purpose}, in order), and "scope" {loaded, problem,
+    in_scope}. Raises akashi.app.case.CaseError for a case file it can't use.
+    """
+    from akashi.app import case as case_mod
+    from akashi.app import commands
+    case = case_mod.load(case_path)
+    scope, problem = _load_scope(scope_path)
+    return {
+        "akashi_version": __version__, "api_version": API_VERSION, "target": case.host,
+        "case": {"path": case_path, "sha256": _sha256(case_path), "type": case.type, "host": case.host,
+                 "resource": case.resource, "owner": case.owner, "actor": case.actor},
+        "requests": [{"method": m, "url": u, "purpose": p} for m, u, p in commands.plan_requests(case)],
+        "scope": {"loaded": scope is not None, "problem": problem,
+                  "in_scope": bool(scope is not None and scope.match(case.host).allowed)},
+    }
+
+
+def prove_app(case_path: str, scope_path: str, creds_path: str, kind: str = "verify",
+              research_path: str | None = None, record: bool = True,
+              via: str = "cli", approval: str | None = None) -> dict:
+    """Run one app-logic case a person approved, inside scope.
+
+    kind "verify" proves it; "recheck" re-runs a previously confirmed case
+    after its fix and adds "transition" (fixed / still_open / unclear).
+    via / approval go into every active.log line, like prove_active().
+    Raises ValueError without a usable scope, for a recheck with nothing
+    confirmed to re-check, or for an unknown kind; CaseError / CredsError
+    for a case or creds file it can't use. Returns the same keys as
+    prove_passive() (verdicts, tally, history), plus "kind" and, for a
+    recheck, "transition". Passwords are never in the result.
+    """
+    from akashi.app import case as case_mod
+    from akashi.app import commands
+    from akashi.app import creds as creds_mod
+    from akashi.proofs import access
+    from akashi.verdict import CONFIRMED, RULED_OUT
+
+    if kind not in APP_KINDS:
+        raise ValueError(f"kind must be one of {APP_KINDS}, not {kind!r}")
+    case = case_mod.load(case_path)
+    scope, problem = _load_scope(scope_path)
+    if scope is None:
+        raise ValueError(f"app-logic checks need a usable scope file ({problem or 'none given'})")
+    research, research_problem = _load_research(research_path)
+    if research_path and research is None:
+        raise ValueError(f"the research header file isn't usable: {research_problem}")
+    if kind == "recheck":
+        before = state.latest(case.host, "access_between_accounts", "A1", commands._key(case))
+        if not before or before.get("status") != CONFIRMED:
+            raise ValueError(f"no confirmed access finding to re-check for {case.resource} on {case.host}")
+    passwords = creds_mod.load(creds_path, case.accounts)
+
+    with activelog.context(via=via, approval=approval):
+        verdict = access.prove(commands._build_item(case, passwords), scope=scope, research=research,
+                               log=commands._make_log(scope))
+    verdict.key = commands._key(case)
+    out = {"akashi_version": __version__, "api_version": API_VERSION, "target": case.host, "kind": kind,
+           **_run(case.host, [verdict], record)}
+    if kind == "recheck":
+        out["transition"] = ("fixed" if verdict.status == RULED_OUT
+                             else "still_open" if verdict.status == CONFIRMED else "unclear")
+    return out

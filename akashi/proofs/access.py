@@ -86,7 +86,7 @@ def _inconclusive(item, headline, ev, now, reason=""):
     return Verdict(item["id"], "access_between_accounts", INCONCLUSIVE, headline, ev, now, reason=reason)
 
 
-def prove(item: dict, *, scope, research=None, log=None, send=None, sleep=time.sleep) -> Verdict:
+def prove(item: dict, *, scope, research=None, log=None, send=None, sleep=None) -> Verdict:
     """Prove (or rule out) one access_between_accounts case.
 
     item carries the Case and the per-account passwords under "targets":
@@ -94,6 +94,7 @@ def prove(item: dict, *, scope, research=None, log=None, send=None, sleep=time.s
     scope, research, log, send: same roles as in around_cdn. sleep is the pacing
     hook (tests pass a no-op)."""
     send = send or _send
+    sleep = sleep or time.sleep   # looked up per call, so tests can switch the pause off
     case = item["targets"]["case"]
     passwords = item["targets"]["passwords"]
     now = common.now_utc()
