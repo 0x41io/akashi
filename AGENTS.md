@@ -12,7 +12,9 @@ and re-checks it after the fix: **prove, fix, re-check.**
 
 Akashi is not an autonomous pentester. It never picks its own targets, never
 runs exploits or destructive payloads, and never changes anything on a target
-(no claiming a resource, no writes, no logins).
+(no claiming a resource, no writes). It is read-only: the only state it ever
+creates is a login session, and only for the user's own test accounts in an
+app-logic check (below).
 
 ## Guardrails (non-negotiable)
 
@@ -34,6 +36,21 @@ runs exploits or destructive payloads, and never changes anything on a target
 - **Code decides, the LLM narrates.** Verdicts come from deterministic checks.
   Any AI summary (later, or via Kaidoku) only explains, and cites the evidence.
 
+### App-logic checks (since v0.3: `akashi app`)
+These prove application-layer flaws, so they log in and send real requests.
+Extra rules on top of the ones above:
+- **The user's own test accounts only.** Credentials come from a separate creds
+  file (JSON, refused unless 600), never the case file, never logged, never put
+  in an AI prompt. A finding between two accounts is always two accounts the
+  user controls — never anyone else's.
+- **One case, no sweeps.** A case file names one exact resource (no pattern, no
+  id range). The check sends a fixed, short set of requests and **stops at
+  proof**: one record as evidence, never enumeration or paging through data.
+- **Keep a hash, not the data.** A confirmed finding rests on a response
+  fingerprint (sha256), so no user data is stored in the verdict or history.
+- **Read-only.** GET only for the resource, POST only to the login path; no
+  writes, deletes, payments or state changes; no redirects followed.
+
 ## The contract with Monomi
 
 - Akashi reads a saved Monomi scan (`monomi --json`), v1.15.0 or newer. It picks
@@ -50,7 +67,9 @@ runs exploits or destructive payloads, and never changes anything on a target
 
 - All code is in the `akashi/` package. `cli.py` is the command line; `scan.py`
   reads and validates a scan; `plan.py` turns leads into a plan (pure data, no
-  network); proof modules live under `akashi/proofs/` (added per rule).
+  network); proof modules live under `akashi/proofs/` (added per rule). App-logic checks
+live under `akashi/app/` (case file, creds file, the `app` commands), with their
+proof in `akashi/proofs/`.
 - `plan.py` never touches the network. Only the `verify` path does, and only
   after the typed yes, and only the requests the plan listed.
 - Install for development with `pip install -e .` (editable).

@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.2.8.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.3.0.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -47,6 +47,13 @@ out not to exist. Akashi is built the other way around.
 > v0.2, a library API (`akashi.api`) lets the [0x41](https://github.com/0x41io/0x41)
 > pipeline run Akashi too (`0x41 vet`, and from Claude over MCP), with every
 > active request logged with who started it and which approval allowed it.
+>
+> Since v0.3, Akashi also proves one **application-logic** flaw: broken access
+> control between two accounts you own (`akashi app plan|verify|recheck`). It
+> reads a small case file naming one resource and two of your own test
+> accounts, checks whether the second can read the first's resource, and stops
+> at proof — one record, never a sweep. Fail-closed on scope, a typed yes, and
+> it keeps only a hash of the response, never the data.
 
 ## What it proves
 
