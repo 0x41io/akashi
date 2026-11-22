@@ -1,6 +1,7 @@
 """Shared test helpers: real Monomi scans, built and saved the way Monomi
 does it, so Akashi is tested against genuine output, not hand-written JSON."""
 
+import json
 import socket
 
 import pytest
@@ -133,3 +134,18 @@ def write_scope(tmp_path, text):
     path = tmp_path / "scope.txt"
     path.write_text(text, encoding="utf-8")
     return str(path)
+
+
+def many_origins_scan(tmp_path, origins=3):
+    """cdn_and_email_scan plus more origin candidates (mønømi v1.24 groups them
+    into one around-the-CDN lead): api1..apiN, each on its own server answering
+    web requests, ranked by IP as numbers after the apex's 203.0.113.10."""
+    path = cdn_and_email_scan(tmp_path)
+    results = json.loads(open(path).read())
+    for n in range(1, origins):
+        host, ip = f"api{n}.origins.test", f"203.0.113.{10 + n}"
+        results["subdomains"].append(host)
+        results["sources"]["certspotter"]["subdomains"].append(host)
+        results["enrichment"]["hosts"][host] = _host(ip, "DigitalOcean")
+        results["exposure"]["ips"][ip] = _ip([host], "DigitalOcean", False)
+    return _save(results, tmp_path, "many.json")

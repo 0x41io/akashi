@@ -112,8 +112,10 @@ def _email_from_facts(domain: str, f: dict) -> tuple[list, str]:
     return steps, EMAIL_OWNERS
 
 
-def _around_cdn(t: dict) -> tuple[list, str]:
-    ip = (t.get("ips") or ["the origin"])[0]
+def _around_cdn(t: dict, facts: dict | None = None) -> tuple[list, str]:
+    # The origins the proof found serving the site (v0.4.0), else the lead's first
+    confirmed = (facts or {}).get("confirmed_origins") or []
+    ip = ", ".join(confirmed) if confirmed else (t.get("ips") or ["the origin"])[0]
     front = (t.get("fronted") or ["the fronted host"])[0]
     cdn = t.get("cdn") or "the CDN"
     return ([
@@ -143,6 +145,6 @@ def for_rule(rule: str, targets: dict, facts: dict | None = None) -> tuple[list,
     builder = _BUILDERS.get(rule)
     if builder is None:
         return [], ""
-    if builder is _email:
+    if builder in (_email, _around_cdn):
         return builder(targets or {}, facts)
     return builder(targets or {})

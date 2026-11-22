@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.3.5.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.4.0.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -65,6 +65,14 @@ out not to exist. Akashi is built the other way around.
 > leads, ranked leads) and v1.23.1 (CVEs on someone else's server never count as the
 > target's), so 0x41 can pin both to the same mønømi. Nothing Akashi proves changes; a fix for
 > a lead behind Azure Front Door now names it instead of "the CDN".
+>
+> v0.4.0 proves mønømi v1.24's grouped **go around the CDN** leads: one lead per CDN with every
+> origin candidate in it, ranked. The plan lists one request through the CDN and one per origin
+> (the first 5 reachable through an in-scope name), and the verdict is **confirmed** if any origin
+> serves the site (naming which), **ruled out** only if every origin was tried and none does, and
+> **inconclusive** otherwise, including when origins past the cap weren't tried. The lead's key
+> (its re-check history) is now its fronted hosts and CDN, not its origin IPs, which rotate. A
+> lead from an older mønømi scan, with one origin, works exactly as before.
 
 ## What it proves
 

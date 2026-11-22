@@ -87,7 +87,8 @@ def lead_key(item: dict) -> str:
 
       takeover / takeover_unknown -> the host and the CNAME it points at
       email_spoofing              -> the domain
-      around_cdn                  -> the fronted host and the origin IP
+      around_cdn                  -> the fronted hosts and the CDN (mønømi v1.24),
+                                     or the fronted host and the origin IP (older scans)
       anything else               -> its hosts and IPs
 
     e.g. "takeover:old-app.example.test>old-app.azurewebsites.net".
@@ -98,6 +99,11 @@ def lead_key(item: dict) -> str:
         parts = [",".join(_names(t.get("hosts"))), str(t.get("cname") or "").lower().rstrip(".")]
     elif rule == "email_spoofing":
         parts = [",".join(_names(t.get("hosts")))]
+    elif rule == "around_cdn" and "origins" in t:
+        # mønømi v1.24: one lead per CDN, so its fronted hosts and CDN name it.
+        # Its origin IPs change (load balancers rotate), and with them in the
+        # key every re-check would start a new history for the same question
+        parts = [",".join(_names(t.get("fronted"))), str(t.get("cdn") or "cdn").lower()]
     elif rule == "around_cdn":
         parts = [",".join(_names(t.get("fronted"))), ",".join(sorted(t.get("ips") or []))]
     else:

@@ -8,13 +8,16 @@ whatever the CDN filters. It's only a lead until someone checks, because the
 origin might serve something else entirely (a different site, a default page,
 or nothing for that host).
 
-Akashi checks it with exactly two requests, the ones the plan printed:
+Akashi checks it with the requests the plan printed, and only those:
 
   1. GET https://{front}/        — through the CDN, the normal way in.
   2. GET https://{ip}/ , Host: {front}  — straight to the origin IP, asking it
-     for the same site by name (HTTP/1.1 virtual-host routing).
+     for the same site by name (HTTP/1.1 virtual-host routing), once per
+     origin candidate (v0.4.0: mønømi v1.24 lists every candidate in one lead,
+     ranked), up to plan.MAX_ORIGINS of them, each reached through an in-scope
+     name (plan.origins_to_try picks them, for the plan and this proof alike).
 
-Then it compares:
+Then it compares, for each origin:
 
   origin serves the same site (200 + matching body/title) -> CONFIRMED: the CDN
       can be bypassed. A stock default page ("Welcome to nginx!") or a short
@@ -30,10 +33,15 @@ Then it compares:
       traffic looks like. A timeout can't prove that, so it never becomes
       ruled out, but the verdict says so plainly and what to do.
 
+With several origins: confirmed if any of them serves the site (naming which),
+ruled out only if every one was tried and none does, and inconclusive
+otherwise, including when origins past the cap weren't tried. One origin
+gives that origin's own verdict, exactly as before.
+
 This is the only check in Akashi that touches a target, so it is fail-closed on
-scope, logs both requests before sending, and carries the honest Akashi
+scope, logs every request before sending, and carries the honest Akashi
 User-Agent plus the research header when one is loaded. It never follows
-redirects, never sends anything but these two requests, and never changes
+redirects, never sends anything but these requests, and never changes
 anything on the target.
 
 The origin request connects to a bare IP, so its certificate can't match a
@@ -146,11 +154,79 @@ def _same_site(cdn: Fetched, origin: Fetched) -> bool:
     return len(ct) >= MIN_TITLE_CHARS and ct == ot
 
 
+def _judge(front: str, ip: str, cdn: Fetched, origin: Fetched) -> tuple[str, str, list, str]:
+    """One origin's result: (status, headline, extra evidence, reason). The
+    rules are the ones in this module's docstring, the same for every origin."""
+    ev = []
+    # The origin didn't answer at all.
+    if origin.status is None:
+        # TLS first: a failed handshake means something answered, so even an
+        # error that says "reset" here is not proof that nothing serves the site.
+        if any(w in origin.error.lower() for w in TLS_WORDS):
+            ev.append("the TLS handshake with the bare IP failed; origins that require the "
+                      "site name in the handshake (SNI) do this, so Akashi can't tell here")
+            return (INCONCLUSIVE, f"the origin {ip} refused the TLS handshake for a bare-IP request; "
+                    "it may still serve the site, so check by hand", ev, "")
+        if any(w in origin.error.lower() for w in REFUSED_WORDS):
+            return (RULED_OUT, f"the origin {ip} does not answer web requests for {front}; "
+                    "it can't be reached around the CDN", ev, "")
+        if cdn.status is not None and any(w in origin.error.lower() for w in TIMEOUT_WORDS):
+            ev.append(f"the CDN answered but the origin stayed silent for {TIMEOUT}s; a "
+                      "firewall that drops (not rejects) non-CDN traffic does this, and so "
+                      "does a slow or overloaded server, so Akashi can't tell which")
+            return (INCONCLUSIVE, f"the origin {ip} went silent (timed out) while the CDN still serves "
+                    f"{front}; likely a firewall dropping direct traffic, but a timeout "
+                    "can't prove it", ev, ORIGIN_SILENT)
+        return (INCONCLUSIVE, f"the origin {ip} didn't respond cleanly ({origin.error}); "
+                "re-run before relying on it", ev, "")
+
+    same = _same_site(cdn, origin)
+    if origin.status == 200 and not same and is_default_page(origin.body):
+        ev.append("the origin answered with a stock default page, which many unrelated "
+                  "servers show, so a match can't prove it serves this site")
+        return (INCONCLUSIVE, f"the origin {ip} answered with a default page, not clearly {front}; "
+                "check by hand", ev, "")
+    if origin.status == 200 and same:
+        ev.append("origin returned the same site as the CDN (matching body/title)")
+        return (CONFIRMED, f"{front} is served directly at the origin {ip}: the CDN can be "
+                "bypassed", ev, "")
+    if origin.status in REFUSING_STATUS and not same:
+        return (RULED_OUT, f"the origin {ip} declines {front} (status {origin.status}): not "
+                "reachable around the CDN", ev, "")
+    return (INCONCLUSIVE, f"the origin {ip} answered (status {origin.status}) but didn't clearly "
+            f"serve {front}; check by hand", ev, "")
+
+
+def _combine(front: str, results: list, extra: list) -> tuple[str, str, str]:
+    """(status, headline, reason) for a lead with several origins (v0.4.0).
+
+    confirmed     any origin serves the site: the CDN can be bypassed there
+    ruled out     every origin was tried and none serves it
+    inconclusive  anything else, including origins past the cap not tried:
+                  an origin nobody asked can't be ruled out"""
+    n = len(results)
+    confirmed = [ip for ip, (status, *_) in results if status == CONFIRMED]
+    if confirmed:
+        return (CONFIRMED, f"{front} is served directly at the origin {', '.join(confirmed)}: the CDN "
+                f"can be bypassed ({len(confirmed)} of {n} origins tried)", "")
+    unclear = [(ip, r) for ip, r in results if r[0] != RULED_OUT]
+    if not unclear and not extra:
+        ips = ", ".join(ip for ip, _ in results)
+        return (RULED_OUT, f"none of the {n} origins ({ips}) serves {front}: it can't be reached "
+                "around the CDN", "")
+    if not unclear:
+        return (INCONCLUSIVE, f"none of the {n} origins tried serves {front}, but {len(extra)} more "
+                "past the cap weren't tried, so it can't be ruled out", "")
+    silent = all(r[3] == ORIGIN_SILENT for _, r in unclear) and not extra
+    return (INCONCLUSIVE, f"{len(unclear)} of {n} origins didn't clearly answer for {front} "
+            f"({', '.join(ip for ip, _ in unclear)}); check by hand", ORIGIN_SILENT if silent else "")
+
+
 def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
+    from akashi.plan import origins_to_try  # here: plan is the one place that picks the origins
     send = send or _send      # resolved here so tests can swap the module's _send
     t = item["targets"]
     front = (t.get("fronted") or [""])[0]
-    ip = (t.get("ips") or [""])[0]
     now = common.now_utc()
     ev = []
 
@@ -161,6 +237,12 @@ def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
         return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
                        f"refused: {front} is not in the approved scope, so the "
                        "around-the-CDN check did not run", [f"{front}: out of scope"], now)
+    # The same origins, in the same order, as the plan the person approved
+    tried, extra = origins_to_try(item, scope)
+    if not tried:
+        return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
+                       "refused: no in-scope hostname resolves to an origin, so the "
+                       "around-the-CDN check did not run", [f"{front}: no in-scope origin"], now)
 
     headers = {"User-Agent": ACTIVE_USER_AGENT}
     if research is not None:
@@ -168,7 +250,6 @@ def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
         ev.append(f"research header sent: {research.summary}")
 
     cdn_url = f"https://{front}/"
-    origin_url = f"https://{ip}/"
     # The scope rule that allowed it (e.g. "*.example.com"), recorded in the
     # audit log like mønømi does. Not the host: that's in the log line already.
     rule = scope.match(front).rule
@@ -177,60 +258,29 @@ def prove(item: dict, *, scope, research=None, log=None, send=None) -> Verdict:
     if log:
         log(front, cdn_url, rule)
     cdn = send(cdn_url, headers, True)
-
-    # Request 2: straight to the origin IP, asking for the same site by name.
-    if log:
-        log(front, origin_url, rule)
-    origin = send(origin_url, {**headers, "Host": front}, False)
-
     ev.append(f"through the CDN: GET {cdn_url} -> " + (str(cdn.status) if cdn.status else cdn.error))
-    ev.append(f"at the origin {ip} (Host: {front}, certificate not checked): GET {origin_url} -> "
-              + (str(origin.status) if origin.status else origin.error))
 
-    # The origin didn't answer at all.
-    if origin.status is None:
-        # TLS first: a failed handshake means something answered, so even an
-        # error that says "reset" here is not proof that nothing serves the site.
-        if any(w in origin.error.lower() for w in TLS_WORDS):
-            ev.append("the TLS handshake with the bare IP failed; origins that require the "
-                      "site name in the handshake (SNI) do this, so Akashi can't tell here")
-            return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
-                           f"the origin {ip} refused the TLS handshake for a bare-IP request; "
-                           "it may still serve the site, so check by hand", ev, now)
-        if any(w in origin.error.lower() for w in REFUSED_WORDS):
-            return Verdict(item["id"], "around_cdn", RULED_OUT,
-                           f"the origin {ip} does not answer web requests for {front}; "
-                           "it can't be reached around the CDN", ev, now)
-        if cdn.status is not None and any(w in origin.error.lower() for w in TIMEOUT_WORDS):
-            ev.append(f"the CDN answered but the origin stayed silent for {TIMEOUT}s; a "
-                      "firewall that drops (not rejects) non-CDN traffic does this, and so "
-                      "does a slow or overloaded server, so Akashi can't tell which")
-            v = Verdict(item["id"], "around_cdn", INCONCLUSIVE,
-                        f"the origin {ip} went silent (timed out) while the CDN still serves "
-                        f"{front}; likely a firewall dropping direct traffic, but a timeout "
-                        "can't prove it", ev, now)
-            v.reason = ORIGIN_SILENT
-            return v
-        return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
-                       f"the origin {ip} didn't respond cleanly ({origin.error}); "
-                       "re-run before relying on it", ev, now)
+    # Then each origin, straight to its IP, asking for the same site by name.
+    results = []
+    for o in tried:
+        ip, origin_url = o["ip"], f"https://{o['ip']}/"
+        if log:
+            log(front, origin_url, rule)
+        origin = send(origin_url, {**headers, "Host": front}, False)
+        ev.append(f"at the origin {ip} (Host: {front}, certificate not checked): GET {origin_url} -> "
+                  + (str(origin.status) if origin.status else origin.error))
+        judged = _judge(front, ip, cdn, origin)
+        ev += judged[2]
+        results.append((ip, judged))
 
-    same = _same_site(cdn, origin)
-    if origin.status == 200 and not same and is_default_page(origin.body):
-        ev.append("the origin answered with a stock default page, which many unrelated "
-                  "servers show, so a match can't prove it serves this site")
-        return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
-                       f"the origin {ip} answered with a default page, not clearly {front}; "
-                       "check by hand", ev, now)
-    if origin.status == 200 and same:
-        ev.append("origin returned the same site as the CDN (matching body/title)")
-        return Verdict(item["id"], "around_cdn", CONFIRMED,
-                       f"{front} is served directly at the origin {ip}: the CDN can be "
-                       "bypassed", ev, now)
-    if origin.status in REFUSING_STATUS and not same:
-        return Verdict(item["id"], "around_cdn", RULED_OUT,
-                       f"the origin {ip} declines {front} (status {origin.status}): not "
-                       "reachable around the CDN", ev, now)
-    return Verdict(item["id"], "around_cdn", INCONCLUSIVE,
-                   f"the origin {ip} answered (status {origin.status}) but didn't clearly "
-                   f"serve {front}; check by hand", ev, now)
+    if len(results) == 1 and not extra:  # one origin: its own verdict, as before v0.4.0
+        status, headline, _, reason = results[0][1]
+    else:
+        ev += [f"origin {ip}: {r[0]}: {r[1]}" for ip, r in results]
+        if extra:
+            ev.append(f"not tried (past the cap of {len(tried)}): " + ", ".join(o["ip"] for o in extra))
+        status, headline, reason = _combine(front, results, extra)
+    v = Verdict(item["id"], "around_cdn", status, headline, ev, now)
+    v.reason = reason
+    v.facts = {"confirmed_origins": [ip for ip, r in results if r[0] == CONFIRMED]}
+    return v

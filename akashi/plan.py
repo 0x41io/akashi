@@ -40,6 +40,36 @@ def _host_in_scope(scope, host: str) -> bool:
     return scope is not None and scope.match(host).allowed
 
 
+# Origins tried per around-the-CDN lead (v0.4.0, mønømi v1.24 groups every
+# origin candidate into one lead): one request each, plus the one through the
+# CDN. The rest are named in the plan and keep the verdict from ruling it out.
+MAX_ORIGINS = 5
+
+
+def origins_of(item) -> list[dict]:
+    """Every origin candidate of an around-the-CDN lead, ranked, as
+    [{"ip", "hosts"}]. mønømi v1.24 lists them in targets["origins"]; an
+    older scan has one origin per lead: its first IP and its hosts."""
+    t = item["targets"]
+    if t.get("origins"):
+        return [{"ip": o["ip"], "hosts": list(o.get("hosts") or [])} for o in t["origins"]]
+    return [{"ip": ip, "hosts": list(t.get("hosts") or [])} for ip in (t.get("ips") or [])[:1]]
+
+
+def origins_to_try(item, scope) -> tuple[list[dict], list[dict]]:
+    """(tried, past the cap): the origins this check sends a request to, each
+    {"ip", "via"} (the first in-scope hostname pointing at it, so the origin is
+    reached through a name we're allowed to test, never a bare IP alone), in
+    mønømi's order. The plan and the proof both use this, so the requests a
+    person approves are exactly the ones sent."""
+    usable = []
+    for o in origins_of(item):
+        via = [h for h in o["hosts"] if _host_in_scope(scope, h)]
+        if via:
+            usable.append({"ip": o["ip"], "via": via[0]})
+    return usable[:MAX_ORIGINS], usable[MAX_ORIGINS:]
+
+
 def _around_cdn(item, scope) -> tuple[bool, str, list]:
     """Scope decision and request list for a go-around-the-CDN check.
 
@@ -61,13 +91,13 @@ def _around_cdn(item, scope) -> tuple[bool, str, list]:
     in_scope_direct = [h for h in direct if _host_in_scope(scope, h)]
     if not _host_in_scope(scope, front):
         return False, f"the fronted host {front} is out of scope", []
-    if not in_scope_direct:
+    tried, _ = origins_to_try(item, scope)
+    if not in_scope_direct or not tried:
+        if len(origins_of(item)) > 1:
+            return False, f"no in-scope hostname resolves to any of the {len(origins_of(item))} origins", []
         return False, f"no in-scope hostname resolves to the origin {ips[0]}", []
-    ip = ips[0]
-    requests = [
-        f"GET https://{front}/  (through the CDN)",
-        f"GET the origin {ip} with Host: {front}  (reached via {in_scope_direct[0]})",
-    ]
+    requests = [f"GET https://{front}/  (through the CDN)"]
+    requests += [f"GET the origin {o['ip']} with Host: {front}  (reached via {o['via']})" for o in tried]
     return True, "", requests
 
 
@@ -95,9 +125,20 @@ def step_for(item: dict, scope=None) -> Step:
     if rule == "around_cdn":
         ready, blocked, requests = _around_cdn(item, scope)
         fronted = (t.get("fronted") or ["?"])[0]
-        ip = (t.get("ips") or ["?"])[0]
-        summary = (f"check whether {fronted} can be reached directly at the origin {ip}, "
-                   "around the CDN")
+        origins = origins_of(item)
+        if len(origins) <= 1:
+            ip = (t.get("ips") or ["?"])[0]
+            summary = (f"check whether {fronted} can be reached directly at the origin {ip}, "
+                       "around the CDN")
+        else:
+            shown = ", ".join(o["ip"] for o in origins[:3]) + (f" and {len(origins) - 3} more"
+                                                               if len(origins) > 3 else "")
+            summary = (f"check whether {fronted} can be reached directly at any of {len(origins)} "
+                       f"origins ({shown}), around the CDN")
+            tried, extra = origins_to_try(item, scope)
+            if extra:
+                summary += (f"; the first {MAX_ORIGINS} in scope are tried, {len(extra)} more "
+                            "aren't (they keep the verdict from ruling it out)")
         return Step(sid, rule, where, "active", summary, requests=requests,
                     ready=ready, blocked=blocked)
 
