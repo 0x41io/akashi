@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.3.4.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.3.5.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -59,10 +59,11 @@ out not to exist. Akashi is built the other way around.
 > `akashi.api.prove_app()`), so [0x41](https://github.com/0x41io/0x41) can run one Claude asked for, after a
 > person's typed yes in a terminal.
 >
-> v0.3.2 to v0.3.4 only move Akashi onto [mønømi](https://github.com/0x41io/monomi) v1.22.0 (new
+> v0.3.2 to v0.3.5 only move Akashi onto [mønømi](https://github.com/0x41io/monomi) v1.22.0 (new
 > `management` hostname category), v1.22.1 (Microsoft 365 and Google's front end count as third-party
 > hosting) and v1.23.0 (the target's own server decided by CNAME too, vendor hosts out of around-the-CDN
-> leads, ranked leads), so 0x41 can pin both to the same mønømi. Nothing Akashi proves changes; a fix for
+> leads, ranked leads) and v1.23.1 (CVEs on someone else's server never count as the
+> target's), so 0x41 can pin both to the same mønømi. Nothing Akashi proves changes; a fix for
 > a lead behind Azure Front Door now names it instead of "the CDN".
 
 ## What it proves
