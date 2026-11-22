@@ -30,6 +30,14 @@ Then:
       wasn't 200, the resource was public)          -> INCONCLUSIVE, the safe
       default, with the reason.
 
+How the login keeps a session is set by the case (login.session, v0.5.0):
+"token" (default) reads a token from the login's JSON body and sends it as
+`Authorization: Bearer ...`; "cookie" captures the login's Set-Cookie and
+sends it back as `Cookie: ...` on every later request, the way a browser
+does, so the check works against ordinary session-cookie web apps and not
+only JSON-token APIs. Either way the login body is sent once, to the login
+path only, and the session credential it returns is never logged or returned.
+
 Fail-closed on scope, like around_cdn: the host is re-checked right before any
 request, GET is only ever sent to the one resource and POST only to the login
 path, no redirects are followed, the research header rides every request, and
@@ -61,6 +69,7 @@ class Fetched:
     status: int | None = None
     body: str = ""
     error: str = ""
+    cookie: str = ""      # the cookies the response set, "name=value; ..." (cookie-session login)
 
 
 def _fingerprint(body: str) -> str:
@@ -72,18 +81,73 @@ def _fingerprint(body: str) -> str:
 
 def _send(method: str, url: str, headers: dict, body: bytes | None) -> Fetched:
     """The real sender: one request, no redirects, a capped body. Any network
-    failure becomes a Fetched with .error set, never an exception."""
+    failure becomes a Fetched with .error set, never an exception. The cookies
+    the response set are captured (for a cookie-session login), not the request's."""
     import requests
     try:
         r = requests.request(method, url, headers=headers, data=body,
                              allow_redirects=False, timeout=TIMEOUT)
-        return Fetched(r.status_code, r.text[:BODY_BYTES])
+        cookie = "; ".join(f"{c.name}={c.value}" for c in r.cookies)
+        return Fetched(r.status_code, r.text[:BODY_BYTES], cookie=cookie)
     except requests.RequestException as e:
         return Fetched(error=str(e))
 
 
 def _inconclusive(item, headline, ev, now, reason=""):
     return Verdict(item["id"], "access_between_accounts", INCONCLUSIVE, headline, ev, now, reason=reason)
+
+
+class Session:
+    """How an app-logic proof talks to the target: log in as an account, then
+    GET the one resource. Scope is already checked by the caller; this class
+    owns the pacing, the per-request log line, the GET-to-resource /
+    POST-to-login-only rule, and the cookie-or-token session (login.session).
+    Shared by every app-logic proof, so the session handling and its safety
+    rules live in one place. A password is sent only inside login(), to the
+    login path, and the token or cookie it yields is never logged or returned."""
+
+    def __init__(self, case, passwords, *, rule, base_headers, log, send, sleep):
+        self.case, self.passwords, self.rule = case, passwords, rule
+        self.base_headers, self.log, self.send, self.sleep = base_headers, log, send, sleep
+        self.sent = 0
+
+    def _pace(self):
+        if self.sent:
+            self.sleep(PACE)
+        self.sent += 1
+
+    def login(self, name: str):
+        """Log in as `name`; return (auth-headers or None, status). The headers
+        are {"Authorization": "Bearer ..."} for a token login or {"Cookie": "..."}
+        for a cookie session; None means no usable session came back."""
+        import json
+        self._pace()
+        if self.log:
+            self.log(self.case.host, self.case.login_url, self.rule)  # the URL, never the body
+        body = json.dumps({self.case.login.user_field: name,
+                           self.case.login.password_field: self.passwords[name]}).encode()
+        got = self.send("POST", self.case.login_url,
+                        {**self.base_headers, "Content-Type": "application/json"}, body)
+        if got.status != 200:
+            return None, got.status
+        if self.case.login.session == "cookie":
+            return ({"Cookie": got.cookie} if got.cookie else None), got.status
+        try:
+            token = json.loads(got.body).get(self.case.login.token_field)
+        except ValueError:
+            token = None
+        return ({"Authorization": f"Bearer {token}"} if isinstance(token, str) and token
+                else None), got.status
+
+    def get(self, auth: dict | None):
+        """GET the one resource, optionally signed in (auth from login())."""
+        self._pace()
+        if self.log:
+            self.log(self.case.host, self.case.resource_url, self.rule)
+        headers = dict(self.base_headers)
+        if auth:
+            headers.update(auth)
+        return self.send("GET", self.case.resource_url, headers, None)
 
 
 def prove(item: dict, *, scope, research=None, log=None, send=None, sleep=None) -> Verdict:
@@ -113,49 +177,17 @@ def prove(item: dict, *, scope, research=None, log=None, send=None, sleep=None) 
         base_headers.update(research.headers)
         ev.append(f"research header sent: {research.summary}")
 
-    sent = 0
-
-    def login(name: str):
-        """Log in as `name`, return (token or None, status). Passwords are
-        sent here and nowhere else, and never logged or returned."""
-        nonlocal sent
-        if sent:
-            sleep(PACE)
-        sent += 1
-        if log:
-            log(case.host, case.login_url, rule)  # the URL, never the body
-        import json
-        body = json.dumps({case.login.user_field: name,
-                           case.login.password_field: passwords[name]}).encode()
-        got = send("POST", case.login_url, {**base_headers, "Content-Type": "application/json"}, body)
-        if got.status != 200:
-            return None, got.status
-        try:
-            token = json.loads(got.body).get(case.login.token_field)
-        except ValueError:
-            token = None
-        return (token if isinstance(token, str) and token else None), got.status
-
-    def get(token: str | None):
-        """GET the one resource, optionally as a logged-in user."""
-        nonlocal sent
-        if sent:
-            sleep(PACE)
-        sent += 1
-        if log:
-            log(case.host, case.resource_url, rule)
-        headers = dict(base_headers)
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        return send("GET", case.resource_url, headers, None)
+    http = Session(case, passwords, rule=rule, base_headers=base_headers,
+                   log=log, send=send, sleep=sleep)
+    login, get = http.login, http.get
 
     # 1-2. Baseline: the owner can read their own resource.
-    owner_token, owner_login_status = login(case.owner)
-    if owner_token is None:
+    owner_auth, owner_login_status = login(case.owner)
+    if owner_auth is None:
         return _inconclusive(item, f"could not log in as the owner {case.owner} "
                              f"(status {owner_login_status}), so there is nothing to prove",
                              ev + [f"login {case.owner}: {owner_login_status}"], now)
-    owner_resp = get(owner_token)
+    owner_resp = get(owner_auth)
     ev.append(f"owner {case.owner} GET {case.resource}: {owner_resp.status or owner_resp.error}")
     if owner_resp.status != 200:
         return _inconclusive(item, f"the owner {case.owner} did not get the resource "
@@ -171,12 +203,12 @@ def prove(item: dict, *, scope, research=None, log=None, send=None, sleep=None) 
                              "a public resource, not broken access control", ev, now)
 
     # 4-5. The actor: can they read the owner's resource?
-    actor_token, actor_login_status = login(case.actor)
-    if actor_token is None:
+    actor_auth, actor_login_status = login(case.actor)
+    if actor_auth is None:
         return _inconclusive(item, f"could not log in as {case.actor} "
                              f"(status {actor_login_status})",
                              ev + [f"login {case.actor}: {actor_login_status}"], now)
-    actor_resp = get(actor_token)
+    actor_resp = get(actor_auth)
     ev.append(f"actor {case.actor} GET {case.resource}: {actor_resp.status or actor_resp.error}")
 
     if actor_resp.status == 200 and _fingerprint(actor_resp.body) == owner_fp:

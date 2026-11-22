@@ -161,7 +161,8 @@ def app_plan(case_path: str, scope_path: str | None = None) -> dict:
     return {
         "akashi_version": __version__, "api_version": API_VERSION, "target": case.host,
         "case": {"path": case_path, "sha256": _sha256(case_path), "type": case.type, "host": case.host,
-                 "resource": case.resource, "owner": case.owner, "actor": case.actor},
+                 "resource": case.resource, "owner": case.owner, "actor": case.actor,
+                 "session": case.login.session},
         "requests": [{"method": m, "url": u, "purpose": p} for m, u, p in commands.plan_requests(case)],
         "scope": {"loaded": scope is not None, "problem": problem,
                   "in_scope": bool(scope is not None and scope.match(case.host).allowed)},
@@ -198,14 +199,14 @@ def prove_app(case_path: str, scope_path: str, creds_path: str, kind: str = "ver
     if research_path and research is None:
         raise ValueError(f"the research header file isn't usable: {research_problem}")
     if kind == "recheck":
-        before = state.latest(case.host, "access_between_accounts", "A1", commands._key(case))
+        before = state.latest(case.host, case.type, "A1", commands._key(case))
         if not before or before.get("status") != CONFIRMED:
-            raise ValueError(f"no confirmed access finding to re-check for {case.resource} on {case.host}")
+            raise ValueError(f"no confirmed finding to re-check for {case.resource} on {case.host}")
     passwords = creds_mod.load(creds_path, case.accounts)
 
     with activelog.context(via=via, approval=approval):
-        verdict = access.prove(commands._build_item(case, passwords), scope=scope, research=research,
-                               log=commands._make_log(scope))
+        verdict = commands.proof_for(case)(commands._build_item(case, passwords), scope=scope,
+                                           research=research, log=commands._make_log(scope, case.type))
     verdict.key = commands._key(case)
     out = {"akashi_version": __version__, "api_version": API_VERSION, "target": case.host, "kind": kind,
            **_run(case.host, [verdict], record)}

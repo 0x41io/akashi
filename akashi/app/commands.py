@@ -6,21 +6,33 @@ only has to register one subcommand group. The flow mirrors the lead commands:
 `plan` sends nothing, `verify` runs after a typed yes, `recheck` re-runs a
 confirmed case after the fix.
 
-Milestone 1 handles one case type, access_between_accounts (case.py). Its
-proof (proofs/access.py) is active, so verify and recheck are fail-closed on
-scope and need the creds file; plan needs neither (it sends nothing).
+Two case types so far, access_between_accounts and privileged_function
+(case.py). Each has its own active proof (proofs/access.py, proofs/privileged.py)
+chosen by PROOFS; both share the Session machinery, so verify and recheck are
+fail-closed on scope and need the creds file, while plan needs neither.
 """
 
 from akashi import activelog, state
 from akashi.app import case as case_mod
 from akashi.app import creds as creds_mod
-from akashi.proofs import access
+from akashi.proofs import access, privileged
 from akashi.verdict import CONFIRMED, RULED_OUT
+
+# Which proof runs each case type. Both take the same (item, scope, ...) and
+# return a Verdict whose rule is the case type.
+PROOFS = {
+    "access_between_accounts": access.prove,
+    "privileged_function": privileged.prove,
+}
+
+
+def proof_for(case):
+    return PROOFS[case.type]
 
 
 def _key(case) -> str:
     """A stable id for this case, so recheck finds the same check across runs."""
-    return f"access_between_accounts:{case.host}:{case.resource}:{case.actor}>{case.owner}"
+    return f"{case.type}:{case.host}:{case.resource}:{case.actor}>{case.owner}"
 
 
 def plan_requests(case) -> list:
@@ -28,18 +40,32 @@ def plan_requests(case) -> list:
     The one source for both the CLI plan and akashi.api.app_plan(), so what a
     person approves and what runs can't drift. No password appears."""
     r, login = case.resource_url, case.login_url
+    how = "keeps a bearer token" if case.login.session == "token" else "keeps the session cookie"
+    priv = case.owner
+    if case.type == "privileged_function":
+        baseline, anon_q, actor_act = (f"{priv} uses it (baseline, must be 200)",
+                                       "with no login (admin-only should refuse it)",
+                                       f"{case.actor} tries to reach it")
+    else:
+        baseline, anon_q, actor_act = (f"{priv} reads it (baseline, must be 200)",
+                                       "with no login (is it simply public?)",
+                                       f"{case.actor} tries to read it")
     return [
-        ("POST", login, f"log in as {case.owner}"),
-        ("GET", r, f"{case.owner} reads it (baseline, must be 200)"),
-        ("GET", r, "with no login (is it simply public?)"),
-        ("POST", login, f"log in as {case.actor}"),
-        ("GET", r, f"{case.actor} tries to read it"),
+        ("POST", login, f"log in as {priv} ({how})"),
+        ("GET", r, baseline),
+        ("GET", r, anon_q),
+        ("POST", login, f"log in as {case.actor} ({how})"),
+        ("GET", r, actor_act),
     ]
 
 
 def _plan_lines(case) -> list:
     """The plan as a person reads it before any yes."""
-    lines = [f"access check: can {case.actor} read {case.owner}'s {case.resource} at {case.host}?"]
+    if case.type == "privileged_function":
+        lines = [f"privilege check: can {case.actor} reach the admin-only {case.resource} "
+                 f"at {case.host} (that {case.owner} can)?"]
+    else:
+        lines = [f"access check: can {case.actor} read {case.owner}'s {case.resource} at {case.host}?"]
     lines += [f"  {method:<4} {url}      {purpose}" for method, url, purpose in plan_requests(case)]
     lines.append("  5 requests total, GET only to the resource and POST only to the login path, "
                  "no redirects followed, 1 request/second.")
@@ -61,14 +87,14 @@ def _load_case_scope_research(args, need_scope):
     return case, scope, research
 
 
-def _make_log(scope):
+def _make_log(scope, kind="access_between_accounts"):
     sha = getattr(scope, "sha256", None)
 
     def log(host, url, rule):
         if rule is None:
-            activelog.refused("access_between_accounts", "host not in approved scope", host, sha)
+            activelog.refused(kind, "host not in approved scope", host, sha)
         else:
-            activelog.request("access_between_accounts", host, url, rule, sha)
+            activelog.request(kind, host, url, rule, sha)
     return log
 
 
@@ -106,7 +132,7 @@ def cmd_verify(args) -> int:
 
     item = _build_item(case, passwords)
     with activelog.context(via="cli"):
-        verdict = access.prove(item, scope=scope, research=research, log=_make_log(scope))
+        verdict = proof_for(case)(item, scope=scope, research=research, log=_make_log(scope, case.type))
     verdict.key = _key(case)
     path = state.record(case.host, verdict)
     print("\n" + verdict.line())
@@ -128,22 +154,24 @@ def cmd_recheck(args) -> int:
         print(f"akashi: {e}")
         return 2
 
-    before = state.latest(case.host, "access_between_accounts", "A1", _key(case))
+    before = state.latest(case.host, case.type, "A1", _key(case))
     if not before or before.get("status") != CONFIRMED:
-        print(f"akashi: no confirmed access finding to re-check for {case.resource} "
+        print(f"akashi: no confirmed finding to re-check for {case.resource} "
               f"on {case.host}. Run `akashi app verify` first.")
         return 2
 
     item = _build_item(case, passwords)
     with activelog.context(via="cli"):
-        verdict = access.prove(item, scope=scope, research=research, log=_make_log(scope))
+        verdict = proof_for(case)(item, scope=scope, research=research, log=_make_log(scope, case.type))
     verdict.key = _key(case)
     state.record(case.host, verdict)
 
+    reach = "reach" if case.type == "privileged_function" else "read"
+    whose = f"{case.owner}'s " if case.type == "access_between_accounts" else ""
     if verdict.status == RULED_OUT:
-        print(f"\n✓ fixed — {case.actor} can no longer read {case.owner}'s {case.resource}")
+        print(f"\n✓ fixed — {case.actor} can no longer {reach} {whose}{case.resource}")
     elif verdict.status == CONFIRMED:
-        print(f"\n✗ still open — {case.actor} can still read {case.owner}'s {case.resource}")
+        print(f"\n✗ still open — {case.actor} can still {reach} {whose}{case.resource}")
     else:
         print(f"\n? unclear — {verdict.headline}")
     for fact in verdict.evidence:

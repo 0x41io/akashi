@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.4.0.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.5.0.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -73,6 +73,16 @@ out not to exist. Akashi is built the other way around.
 > **inconclusive** otherwise, including when origins past the cap weren't tried. The lead's key
 > (its re-check history) is now its fronted hosts and CDN, not its origin IPs, which rotate. A
 > lead from an older mønømi scan, with one origin, works exactly as before.
+>
+> v0.5.0 widens the **application-logic** checks in two ways. The login step now keeps a session the
+> way real web apps do: set `login.session = "cookie"` in a case and Akashi carries the login's
+> `Set-Cookie` on every later request, instead of only reading a bearer token from a JSON body
+> (`session = "token"`, still the default). And a second check type, `privileged_function`, proves
+> missing **function-level** access control: can a low-privilege account (`actor`) reach an admin-only
+> endpoint that the `privileged` account can? Same shape as the object-level (IDOR) check — one
+> endpoint, two of your own accounts, fail-closed on scope, a typed yes, only a hash of the response
+> kept — and conservative on purpose: it confirms only when the actor gets the privileged account's
+> exact response and the endpoint refuses an anonymous request, and stays inconclusive otherwise.
 
 ## What it proves
 

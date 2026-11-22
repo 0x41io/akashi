@@ -8,16 +8,35 @@ stops. Keeping the input this tight is what makes "stop at proof" real: there
 is no id range to walk and no pattern to expand, because the file can't hold
 one.
 
-Milestone 1 knows one type, "access_between_accounts": can the `actor` account
-read a resource owned by the `owner` account? The file:
+Two check types so far. Both ask "an account reaches something it should not,"
+and both name a baseline account that IS allowed plus an `actor` that must not be.
+
+"access_between_accounts" (object-level): can `actor` read a resource OWNED by
+the `owner` account?
 
     type     = "access_between_accounts"
     base     = "https://app.example.com"
     resource = "/api/notes/2"        # one exact path, never a pattern
     owner    = "bob"                 # the account that owns it
     actor    = "alice"              # the account that must not reach it
+
+"privileged_function" (function-level): can `actor`, a low-privilege account,
+reach an admin-only endpoint that the `privileged` account can?
+
+    type       = "privileged_function"
+    base       = "https://app.example.com"
+    resource   = "/api/admin/users"  # one admin-only endpoint
+    privileged = "admin"             # the account that IS allowed (baseline)
+    actor      = "alice"            # the low-privilege account that must not be
     login    = { path = "/api/login", user_field = "username",
                  password_field = "password", token_field = "token" }
+
+How the login keeps you signed in is set by `login.session` (v0.5.0):
+  "token"  (default) the login returns a token in its JSON body
+           (`token_field`), sent back as `Authorization: Bearer <token>`.
+  "cookie" the login sets a session cookie (`Set-Cookie`), sent back as
+           `Cookie: ...` on every later request, the way a browser does.
+           This is how most web apps (not just JSON APIs) keep a session.
 
 `base` fixes the host; `resource` is one path under it. Both accounts must
 appear in the creds file (creds.py), which is separate so secrets never live
@@ -27,7 +46,10 @@ in the case file.
 import tomllib
 from dataclasses import dataclass
 
-TYPES = ("access_between_accounts",)
+TYPES = ("access_between_accounts", "privileged_function")
+# The TOML key that names the baseline (allowed) account, per type. It loads
+# into the Case's `owner` field either way, so one proof scaffold serves both.
+_BASELINE_KEY = {"access_between_accounts": "owner", "privileged_function": "privileged"}
 # A resource is one path, not a pattern: no "*", no ".." , must start with "/".
 # This is part of the safety story, so it's checked, not assumed.
 _BAD_IN_PATH = ("*", "..", " ")
@@ -37,12 +59,16 @@ class CaseError(ValueError):
     """The case file can't be used; the message says why. Nothing ran."""
 
 
+SESSIONS = ("token", "cookie")
+
+
 @dataclass(frozen=True)
 class Login:
     path: str
     user_field: str = "username"
     password_field: str = "password"
     token_field: str = "token"
+    session: str = "token"    # "token" (JSON bearer) or "cookie" (Set-Cookie)
 
 
 @dataclass(frozen=True)
@@ -115,17 +141,22 @@ def load(path: str) -> Case:
 
     base, host = _check_base(_str(data, "base"))
     resource = _check_path(_str(data, "resource"), "resource")
-    owner, actor = _str(data, "owner"), _str(data, "actor")
+    baseline_key = _BASELINE_KEY[ctype]   # "owner" or "privileged"
+    owner, actor = _str(data, baseline_key), _str(data, "actor")
     if owner == actor:
-        raise CaseError("'owner' and 'actor' must be two different accounts")
+        raise CaseError(f"'{baseline_key}' and 'actor' must be two different accounts")
 
     login_raw = data.get("login")
     if not isinstance(login_raw, dict):
         raise CaseError("'login' must be a table, e.g. login = { path = \"/api/login\" }")
+    session = login_raw.get("session", "token")
+    if session not in SESSIONS:
+        raise CaseError(f'login.session must be one of {SESSIONS} (got {session!r})')
     login = Login(
         path=_check_path(_str(login_raw, "path"), "login.path"),
         user_field=login_raw.get("user_field", "username"),
         password_field=login_raw.get("password_field", "password"),
         token_field=login_raw.get("token_field", "token"),
+        session=session,
     )
     return Case(ctype, base, host, resource, owner, actor, login)

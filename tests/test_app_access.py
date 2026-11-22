@@ -119,7 +119,7 @@ def sender(responses):
 
     def send(method, url, headers, body):
         calls.append({"method": method, "url": url, "auth": headers.get("Authorization"),
-                      "body": body})
+                      "cookie": headers.get("Cookie"), "body": body})
         return responses.pop(0)
     return send, calls
 
@@ -256,7 +256,7 @@ def test_app_verify_confirms_then_recheck_sees_the_fix(lab, capsys, monkeypatch)
 def test_recheck_needs_a_prior_confirmation(lab, capsys, monkeypatch):
     fake_proof(monkeypatch, [])
     code = cli.main(["app", "recheck", lab["case"], "--scope", lab["scope"], "--creds", lab["creds"]])
-    assert code == 2 and "no confirmed access finding" in capsys.readouterr().out
+    assert code == 2 and "no confirmed finding" in capsys.readouterr().out
 
 
 def test_verify_refuses_a_loose_creds_file(lab, capsys, monkeypatch):
@@ -264,3 +264,76 @@ def test_verify_refuses_a_loose_creds_file(lab, capsys, monkeypatch):
     monkeypatch.setattr(cli, "_ask", lambda p: "yes")
     code = cli.main(["app", "verify", lab["case"], "--scope", lab["scope"], "--creds", lab["creds"]])
     assert code == 2 and "readable by others" in capsys.readouterr().out
+
+
+# --- v0.5.0: cookie-session login -----------------------------------------------
+
+def test_login_session_defaults_to_token_and_accepts_cookie(tmp_path):
+    assert case_mod.load(write(tmp_path, CASE_TOML)).login.session == "token"
+    toml = CASE_TOML.replace('login    = { path = "/api/login" }',
+                             'login    = { path = "/api/login", session = "cookie" }')
+    assert case_mod.load(write(tmp_path, toml)).login.session == "cookie"
+
+
+def test_a_bad_session_mode_is_refused(tmp_path):
+    toml = CASE_TOML.replace('login    = { path = "/api/login" }',
+                             'login    = { path = "/api/login", session = "oauth" }')
+    with pytest.raises(case_mod.CaseError, match="login.session must be"):
+        case_mod.load(write(tmp_path, toml))
+
+
+def cookie_item():
+    c = case_mod.Case("access_between_accounts", "https://app.41xlab.test", "app.41xlab.test",
+                      "/api/notes/2", "bob", "alice",
+                      case_mod.Login("/api/login", session="cookie"))
+    return {"id": "A1", "targets": {"case": c, "passwords": {"bob": "bpw", "alice": "apw"}}}
+
+
+def run_cookie(responses):
+    send, calls = sender(list(responses))
+    v = access.prove(cookie_item(), scope=Scope(), send=send, sleep=lambda s: None)
+    return v, calls
+
+
+def test_cookie_login_carries_the_session_cookie_on_later_requests():
+    # Login sets a cookie (empty JSON body); the resource GET sends it back
+    v, calls = run_cookie([F(200, "{}", cookie="sid=OWN"), F(200, SECRET),      # owner
+                           F(401, ""),                                          # anon: not public
+                           F(200, "{}", cookie="sid=ACT"), F(200, SECRET)])     # actor
+    assert v.status == CONFIRMED
+    gets = [c for c in calls if c["method"] == "GET"]
+    assert gets[0]["cookie"] == "sid=OWN"      # owner's cookie on the owner read
+    assert gets[1]["cookie"] is None           # the anon read carries no cookie
+    assert gets[2]["cookie"] == "sid=ACT"      # actor's cookie on the actor read
+    assert all(c["auth"] is None for c in calls)   # no bearer token anywhere in cookie mode
+
+
+def test_a_cookie_login_that_sets_no_cookie_is_inconclusive():
+    # 200 but no Set-Cookie: the login didn't actually start a session
+    v, _ = run_cookie([F(200, "{}", cookie="")])
+    assert v.status == INCONCLUSIVE and "owner" in v.headline
+
+
+def test_token_mode_still_sends_a_bearer_and_no_cookie():
+    _, calls = run([F(200, '{"token": "OWN"}'), F(200, SECRET), F(401, ""),
+                    F(200, '{"token": "ACT"}'), F(200, SECRET)])
+    gets = [c for c in calls if c["method"] == "GET"]
+    assert gets[0]["auth"] == "Bearer OWN" and gets[2]["auth"] == "Bearer ACT"
+    assert all(c["cookie"] is None for c in calls)
+
+
+def test_real_send_captures_the_responses_cookies(monkeypatch):
+    # The real _send must turn a response's Set-Cookie into "name=value; ..."
+    class FakeCookie:
+        def __init__(self, name, value):
+            self.name, self.value = name, value
+
+    class FakeResp:
+        status_code = 200
+        text = "{}"
+        cookies = [FakeCookie("sid", "abc"), FakeCookie("csrf", "xyz")]
+
+    import requests
+    monkeypatch.setattr(requests, "request", lambda *a, **k: FakeResp())
+    got = access._send("POST", "https://app.41xlab.test/api/login", {}, b"{}")
+    assert got.status == 200 and got.cookie == "sid=abc; csrf=xyz"

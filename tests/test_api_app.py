@@ -54,7 +54,7 @@ def answers(monkeypatch, queue):
 def test_app_plan_keys_are_a_contract(lab):
     p = api.app_plan(lab["case"], lab["scope"])
     assert set(p) == {"akashi_version", "api_version", "target", "case", "requests", "scope"}
-    assert set(p["case"]) == {"path", "sha256", "type", "host", "resource", "owner", "actor"}
+    assert set(p["case"]) == {"path", "sha256", "type", "host", "resource", "owner", "actor", "session"}
     assert set(p["scope"]) == {"loaded", "problem", "in_scope"}
     assert all(set(r) == {"method", "url", "purpose"} for r in p["requests"])
 
@@ -113,7 +113,7 @@ def test_recheck_after_the_fix_reports_fixed(lab, monkeypatch):
 
 def test_recheck_needs_a_confirmed_finding_and_sends_nothing(lab, monkeypatch):
     sent = answers(monkeypatch, [])
-    with pytest.raises(ValueError, match="no confirmed access finding"):
+    with pytest.raises(ValueError, match="no confirmed finding"):
         api.prove_app(lab["case"], lab["scope"], lab["creds"], kind="recheck")
     assert sent == []
 
