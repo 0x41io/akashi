@@ -1,6 +1,8 @@
 # Akashi imports Monomi as a library. Monomi brings its own dependencies
 # (requests, dnspython, ...). Pinned to the release whose contract test
 # (monomi/tests/test_contract.py) locks the scan fields Akashi reads.
-# v1.16.0 since Akashi v0.2.1, so the 0x41 suite installs one Monomi.
-monomi @ git+https://github.com/0x41io/monomi@v1.21.0
+# Must match the pin in pyproject.toml exactly, so the 0x41 suite installs one
+# Monomi (tests/test_pins.py checks it). v1.25.0: the scope check reads the host
+# requests really connects to.
+monomi @ git+https://github.com/0x41io/monomi@v1.25.0
 tldextract>=5

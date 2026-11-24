@@ -84,6 +84,13 @@ def _send(method: str, url: str, headers: dict, body: bytes | None) -> Fetched:
     failure becomes a Fetched with .error set, never an exception. The cookies
     the response set are captured (for a cookie-session login), not the request's."""
     import requests
+    from monomi.scope import named_host, request_host
+    # Last check before sending (v0.5.1): the host requests will connect to
+    # must be the one the URL names, so a URL built to read one way and
+    # connect another is never sent (and never gets a password).
+    real = request_host(url)
+    if real is None or real != named_host(url):
+        return Fetched(error=f"refused, not sent: {url[:120]!r} doesn't name one clear host")
     try:
         r = requests.request(method, url, headers=headers, data=body,
                              allow_redirects=False, timeout=TIMEOUT)

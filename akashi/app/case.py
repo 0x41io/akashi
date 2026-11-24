@@ -104,8 +104,15 @@ def _str(data: dict, key: str) -> str:
 
 def _check_base(base: str) -> tuple[str, str]:
     """(base, host). HTTPS only, a host, and no path/query/fragment, so the
-    only path Akashi ever requests is the resource (and the login path)."""
+    only path Akashi ever requests is the resource (and the login path).
+
+    Since v0.5.1 the host must be one clear host: no "@" (a login inside the
+    URL) and no backslash, and the host requests will really connect to must
+    be the one checked against the scope. With "https://evil.test\\@app.lab"
+    urlsplit reads app.lab (in scope) while requests connects to evil.test,
+    so the login, with the test account's password, would have gone there."""
     from urllib.parse import urlsplit
+    from monomi.scope import named_host, request_host
     u = urlsplit(base)
     if u.scheme != "https":
         raise CaseError(f"'base' must start with https:// (got {base!r})")
@@ -114,7 +121,12 @@ def _check_base(base: str) -> tuple[str, str]:
     if u.path not in ("", "/") or u.query or u.fragment:
         raise CaseError("'base' must be just scheme + host, e.g. https://app.example.com "
                         "(the path goes in 'resource')")
-    return f"https://{u.netloc}", u.hostname
+    if "@" in u.netloc or "\\" in base:
+        raise CaseError(f"'base' must be just https:// and a host, with no '@' or backslash (got {base!r})")
+    real = request_host(f"https://{u.netloc}/")
+    if real is None or real != named_host(base):
+        raise CaseError(f"'base' doesn't name one clear host to connect to (got {base!r})")
+    return f"https://{u.netloc}", real
 
 
 def _check_path(value: str, key: str) -> str:

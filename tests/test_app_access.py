@@ -337,3 +337,58 @@ def test_real_send_captures_the_responses_cookies(monkeypatch):
     monkeypatch.setattr(requests, "request", lambda *a, **k: FakeResp())
     got = access._send("POST", "https://app.41xlab.test/api/login", {}, b"{}")
     assert got.status == 200 and got.cookie == "sid=abc; csrf=xyz"
+
+
+# --- v0.5.1: a base must name one clear host (from Monomi's v1.25 review) -----
+# Real requests/urllib3 URL parsing: a faked parser would hide the disagreement.
+
+def connects_to(url):
+    """Where requests would really open a connection for this URL."""
+    import requests
+    from urllib3.util import parse_url
+    return parse_url(requests.Request("GET", url).prepare().url).host
+
+
+@pytest.mark.parametrize("value", [
+    "base = 'https://evil.test\\@app.41xlab.test'",   # TOML literal string: one backslash
+    'base = "https://evil.test@app.41xlab.test"',
+    'base = "https://user:pw@app.41xlab.test"',
+])
+def test_a_base_that_hides_where_it_connects_is_refused(tmp_path, value):
+    bad = "\n".join(value if ln.startswith("base ") else ln for ln in CASE_TOML.splitlines())
+    with pytest.raises(case_mod.CaseError, match="no '@' or backslash"):
+        case_mod.load(write(tmp_path, bad))
+
+
+def test_the_backslash_trick_is_real_and_would_have_sent_the_login_elsewhere():
+    # what v0.5.0 accepted: the scope saw app.41xlab.test, the login went to evil.test
+    assert connects_to("https://evil.test\\@app.41xlab.test/api/login") == "evil.test"
+
+
+def test_a_base_with_a_port_or_odd_case_still_loads(tmp_path):
+    good = CASE_TOML.replace('base     = "https://app.41xlab.test"',
+                             'base     = "https://APP.41xlab.test:8443"')
+    c = case_mod.load(write(tmp_path, good))
+    assert c.host == "app.41xlab.test"
+    assert connects_to(c.login_url) == c.host
+
+
+def test_the_real_sender_never_sends_an_ambiguous_url(monkeypatch):
+    import requests
+
+    def boom(*args, **kwargs):
+        raise AssertionError("a request was sent")
+    monkeypatch.setattr(requests, "request", boom)
+    got = access._send("POST", "https://evil.test\\@app.41xlab.test/api/login", {}, b'{"password": "x"}')
+    assert got.status is None and got.error.startswith("refused, not sent")
+
+
+def test_the_real_sender_still_sends_a_clear_url(monkeypatch):
+    import requests
+    seen = []
+
+    class R:
+        status_code, text, cookies = 200, "ok", []
+    monkeypatch.setattr(requests, "request", lambda method, url, **kw: seen.append(url) or R())
+    got = access._send("GET", "https://app.41xlab.test/api/notes/2", {}, None)
+    assert got.status == 200 and seen == ["https://app.41xlab.test/api/notes/2"]

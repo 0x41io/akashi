@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.5.0.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.5.1.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -83,6 +83,15 @@ out not to exist. Akashi is built the other way around.
 > endpoint, two of your own accounts, fail-closed on scope, a typed yes, only a hash of the response
 > kept — and conservative on purpose: it confirms only when the actor gets the privileged account's
 > exact response and the endpoint refuses an anonymous request, and stays inconclusive otherwise.
+>
+> v0.5.1 is a safety fix. A case file's `base` must now name one clear host: no `@` (a login
+> inside the URL) and no backslash. Before, `https://evil.test\@app.example.com` read as
+> `app.example.com` to the scope check while `requests` connected to `evil.test`, so the login,
+> with your test account's password, would have gone there. Every request the app checks send
+> is also checked one last time, right before sending: the host it will really connect to must
+> be the one the URL names, or nothing is sent. Akashi now pins [mønømi](https://github.com/0x41io/monomi)
+> v1.25.0 (whose scope check got the same fix), and `requirements.txt` agrees with
+> `pyproject.toml` again (a test keeps them in step).
 
 ## What it proves
 
