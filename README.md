@@ -37,13 +37,13 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.5.1.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.6.0.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
 > (RDAP) lookup for an unknown-service takeover, and the email re-check) never
-> touch the target; the one active check (going around the CDN) runs only
-> inside scope. A **confirmed** lead prints the exact fix to close it. Since
+> touch the target; the active checks (going around the CDN, and since v0.6.0
+> exposed files) run only inside scope. A **confirmed** lead prints the exact fix to close it. Since
 > v0.2, a library API (`akashi.api`) lets the [0x41](https://github.com/0x41io/0x41)
 > pipeline run Akashi too (`0x41 vet`, and from Claude over MCP), with every
 > active request logged with who started it and which approval allowed it.
@@ -92,6 +92,18 @@ out not to exist. Akashi is built the other way around.
 > be the one the URL names, or nothing is sent. Akashi now pins [mønømi](https://github.com/0x41io/monomi)
 > v1.25.0 (whose scope check got the same fix), and `requirements.txt` agrees with
 > `pyproject.toml` again (a test keeps them in step).
+>
+> v0.6.0 proves mønømi v1.27's **exposed files**: the files `--content` found on a host (a Git
+> folder, an `.env`, a backup zip...), one path per host. For each file Akashi asks again, right
+> now: three made-up paths first, to see what the host's "not found" looks like today, then the
+> file itself, and the same content check Monomi used (it calls mønømi's `content.recheck_file()`,
+> so the two tools never disagree on what "the real file" is). **Confirmed** if any file is still
+> served, naming each; **ruled out** only when every file is gone (removed, or refused for that path
+> alone, which is the fix); **inconclusive** otherwise: a timeout, a host that refuses every path, a
+> catch-all page, or files past the cap of 5 not asked. The evidence says what a file is, never
+> what it holds. A confirmed secrets file's fix says to change everything in it, not just remove it.
+> Akashi now pins [mønømi](https://github.com/0x41io/monomi) v1.27.0, and every active log line
+> names the rule it was for (`exposed_file` or `around_cdn`).
 
 ## What it proves
 
@@ -103,6 +115,7 @@ lead is without reading its text.
 | `takeover` (claimable service) | Re-check now that the dangling CNAME still points at the deleted target and that the target still doesn't exist, on both DoH resolvers. Never claims the name. | No — DNS only |
 | `takeover_unknown` | The same DNS re-check, plus a registry (RDAP) lookup: if the target's domain is registered, an attacker can't claim it (ruled out); otherwise inconclusive, since claiming a domain is a human decision | No — DNS + registry |
 | `around_cdn` | One request to the fronted host through the CDN, one to the origin IP with the same `Host` header; compare the responses. A stock default page or a short generic title never counts as a match | Yes — one request each |
+| `exposed_file` (v0.6.0) | For each file found (up to 5): three made-up paths on the host, then the file, judged by mønømi's own content check. Confirmed if any is still the real file; ruled out only when all are gone | Yes — four requests per file |
 | `email_spoofing` | Fresh SPF / DMARC / DKIM lookup. The evidence names the SPF `all` rule, the DKIM selectors found and whether DMARC reports (`rua=`) are collected, and the fix is built from that setup (v0.1.3): reports first, what's already in place, the senders SPF lists, then enforce | No — DNS only |
 
 Every verdict is **confirmed**, **ruled out**, or **inconclusive** (the default),
@@ -203,6 +216,11 @@ an active proof an agent asked for and a person approved in a terminal
 - **Default pages.** If the origin answers with a stock page ("Welcome to
   nginx!"), Akashi can't tell whether it would serve the site, so it says
   inconclusive instead of guessing either way.
+
+- **Exposed files behind a WAF.** A host that refuses Akashi on every path
+  (made-up ones too) can't show whether a file was removed, so the verdict is
+  **inconclusive**, never ruled out. Run it with the research header the
+  program asks for, or check by hand.
 
 ## Guardrails
 

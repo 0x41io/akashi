@@ -1,7 +1,7 @@
 """
 Run the proofs. The passive ones (DNS and registry) ask public services about
-a name and never contact the target. The one active proof (around_cdn) runs
-only inside scope, after the typed yes.
+a name and never contact the target. The active ones (around_cdn, and since
+v0.6.0 exposed_file) run only inside scope, after the typed yes.
 
 The CLI handles showing the plan, the typed yes, printing and recording; this
 module just maps a lead to its proof and runs it, turning any failure into an
@@ -10,7 +10,7 @@ inconclusive verdict rather than a crash.
 
 from akashi import activelog, fixes
 from akashi.scan import lead_key
-from akashi.proofs import around_cdn, email, takeover
+from akashi.proofs import around_cdn, email, exposed_file, takeover
 from akashi.verdict import CONFIRMED, INCONCLUSIVE, Verdict
 
 # rule -> the function that proves it, for the checks that never touch the target
@@ -23,6 +23,7 @@ PASSIVE_PROOFS = {
 # rule -> the function that proves it, for the checks that send real requests
 ACTIVE_PROOFS = {
     "around_cdn": around_cdn.prove,
+    "exposed_file": exposed_file.prove,
 }
 
 
@@ -62,16 +63,18 @@ def prove(item: dict) -> Verdict:
 
 
 def prove_active(item: dict, *, scope, research=None, send=None) -> Verdict:
-    """The verdict for one active lead (around the CDN). Builds the audit-log
-    callback so the CLI stays simple, and turns any failure into inconclusive.
-    An out-of-scope target is refused inside the proof, before any request."""
+    """The verdict for one active lead (around the CDN, exposed files). Builds
+    the audit-log callback so the CLI stays simple, and turns any failure into
+    inconclusive. An out-of-scope target is refused inside the proof, before
+    any request. Each log line names the lead's rule as its tool."""
     sha = getattr(scope, "sha256", None)
+    tool = item.get("rule") or "?"
 
     def log(host, url, rule):
         if rule is None:
-            activelog.refused("around_cdn", f"{host} out of scope", host=host, scope_sha=sha)
+            activelog.refused(tool, f"{host} out of scope", host=host, scope_sha=sha)
         else:
-            activelog.request("around_cdn", host, url, rule, sha)
+            activelog.request(tool, host, url, rule, sha)
 
     kwargs = {"scope": scope, "research": research, "log": log}
     if send is not None:
@@ -79,5 +82,5 @@ def prove_active(item: dict, *, scope, research=None, send=None) -> Verdict:
     try:
         return _with_fix(item, ACTIVE_PROOFS[item["rule"]](item, **kwargs))
     except Exception as e:
-        activelog.refused("around_cdn", f"error: {e}", scope_sha=sha)
+        activelog.refused(tool, f"error: {e}", scope_sha=sha)
         return _with_fix(item, _inconclusive(item, str(e)))
