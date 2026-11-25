@@ -16,7 +16,7 @@ MIN_MONOMI = (1, 15, 0)
 
 # The rules Akashi knows how to prove. Everything else in a scan is left
 # alone (reported as "not handled yet"), never guessed at.
-PROVABLE = ("takeover", "takeover_unknown", "email_spoofing", "around_cdn")
+PROVABLE = ("takeover", "takeover_unknown", "email_spoofing", "around_cdn", "exposed_file")
 
 
 class ScanError(Exception):
@@ -89,6 +89,9 @@ def lead_key(item: dict) -> str:
       email_spoofing              -> the domain
       around_cdn                  -> the fronted hosts and the CDN (mønømi v1.24),
                                      or the fronted host and the origin IP (older scans)
+      exposed_file                -> the host alone (mønømi v1.27): its file list
+                                     shrinks as files are removed, and its IPs
+                                     rotate behind a CDN, but it's the same question
       anything else               -> its hosts and IPs
 
     e.g. "takeover:old-app.example.test>old-app.azurewebsites.net".
@@ -106,6 +109,8 @@ def lead_key(item: dict) -> str:
         parts = [",".join(_names(t.get("fronted"))), str(t.get("cdn") or "cdn").lower()]
     elif rule == "around_cdn":
         parts = [",".join(_names(t.get("fronted"))), ",".join(sorted(t.get("ips") or []))]
+    elif rule == "exposed_file":
+        parts = [",".join(_names(t.get("hosts")))]
     else:
         parts = [",".join(_names(t.get("hosts"))), ",".join(sorted(t.get("ips") or []))]
     return f"{rule}:" + ">".join(parts)

@@ -15,6 +15,7 @@ fix to confirm it's actually closed.
 DNS_ADMIN = "DNS admin"
 EMAIL_OWNERS = "DNS admin and email admin"
 SERVER_ADMIN = "server / infrastructure admin"
+WEB_AND_SERVER = "web app team and server / infrastructure admin"
 
 
 def _takeover(t: dict) -> tuple[list, str]:
@@ -128,12 +129,35 @@ def _around_cdn(t: dict, facts: dict | None = None) -> tuple[list, str]:
     ], SERVER_ADMIN)
 
 
+def _exposed_file(t: dict, facts: dict | None = None) -> tuple[list, str]:
+    """Steps for the files the proof found still served (v0.6.0), else every
+    file the path lists. A secrets file was readable by anyone: removing it
+    isn't enough, what it held has to be changed too."""
+    host = (t.get("hosts") or ["the host"])[0]
+    f = facts or {}
+    served = f.get("still_served") or [x.get("path", "?") for x in t.get("files") or []]
+    steps = [f"Remove {', '.join(served)} from {host}'s web root, or block {'them' if len(served) > 1 else 'it'} "
+             "in the web server (nginx: a deny rule for the path; Apache: a <Files> or "
+             "<DirectoryMatch> deny). Check every server and container behind the name."]
+    if f.get("secrets"):
+        steps.append(f"Treat everything in {', '.join(f['secrets'])} as already read: change every "
+                     "password, API key and token in it, then check the services they open for "
+                     "logins you don't recognise.")
+    if f.get("source"):
+        steps.append(f"{', '.join(f['source'])} can let anyone download the code and its history: "
+                     "look through the history for passwords or keys ever committed, and change them.")
+    steps.append(f"Then run `akashi recheck` to confirm {host} no longer serves "
+                 f"{'them' if len(served) > 1 else 'it'}.")
+    return steps, WEB_AND_SERVER
+
+
 # rule -> the function that builds its fix
 _BUILDERS = {
     "takeover": _takeover,
     "takeover_unknown": _takeover,
     "email_spoofing": _email,
     "around_cdn": _around_cdn,
+    "exposed_file": _exposed_file,
 }
 
 
@@ -145,6 +169,6 @@ def for_rule(rule: str, targets: dict, facts: dict | None = None) -> tuple[list,
     builder = _BUILDERS.get(rule)
     if builder is None:
         return [], ""
-    if builder in (_email, _around_cdn):
+    if builder in (_email, _around_cdn, _exposed_file):
         return builder(targets or {}, facts)
     return builder(targets or {})

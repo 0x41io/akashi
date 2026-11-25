@@ -24,3 +24,10 @@ def test_monomi_is_new_enough_for_the_url_checks():
     # v1.25.0 is where scope.request_host / named_host come from
     from monomi.common import parse_version, VERSION
     assert parse_version(VERSION) >= (1, 25, 0)
+
+
+def test_monomi_is_new_enough_for_exposed_files():
+    # v1.27.0 builds exposed_file paths and has content.recheck_file
+    from monomi import content
+    from monomi.common import parse_version, VERSION
+    assert parse_version(VERSION) >= (1, 27, 0) and callable(content.recheck_file)

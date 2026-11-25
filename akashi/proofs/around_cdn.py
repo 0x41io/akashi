@@ -38,7 +38,7 @@ ruled out only if every one was tried and none does, and inconclusive
 otherwise, including when origins past the cap weren't tried. One origin
 gives that origin's own verdict, exactly as before.
 
-This is the only check in Akashi that touches a target, so it is fail-closed on
+Like every active check in Akashi (exposed_file is the other), it is fail-closed on
 scope, logs every request before sending, and carries the honest Akashi
 User-Agent plus the research header when one is loaded. It never follows
 redirects, never sends anything but these requests, and never changes

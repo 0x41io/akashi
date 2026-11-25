@@ -10,6 +10,8 @@ what will happen before anything is sent.
 
 from dataclasses import dataclass, field
 
+from akashi.proofs import exposed_file
+
 
 # How a proof reaches its answer, and whether it touches the target at all:
 #   dns          only asks public DNS resolvers about a name (never the target)
@@ -101,6 +103,30 @@ def _around_cdn(item, scope) -> tuple[bool, str, list]:
     return True, "", requests
 
 
+def _exposed_file(item, scope) -> tuple[bool, str, list]:
+    """Scope decision and request list for an exposed-files check (v0.6.0).
+
+    Fail closed: the path's host must be in scope. Each file costs three
+    made-up paths (random names, made up when the check runs, so they can't
+    be listed exactly) and then the file itself."""
+    host = ((item["targets"].get("hosts") or [""])[0])
+    if scope is None:
+        return False, "no scope file loaded (active checks need one)", []
+    if not host:
+        return False, "the path names no host", []
+    if not _host_in_scope(scope, host):
+        return False, f"{host} is out of scope", []
+    tried, _, _ = exposed_file.files_to_try(item)
+    if not tried:
+        return False, f"none of the files listed for {host} can be asked for", []
+    requests = []
+    for f in tried:
+        base = f["url"].split("/", 3)[:3]
+        requests.append(f"GET 3 made-up paths on {'/'.join(base)}  (what its not-found looks like now)")
+        requests.append(f"GET {f['url']}  (the {f['kind']} file, read up to 16 KB, never followed)")
+    return True, "", requests
+
+
 def step_for(item: dict, scope=None) -> Step:
     """The plan step for one provable lead. No network, no scope changes."""
     rule, t = item["rule"], item["targets"]
@@ -139,6 +165,21 @@ def step_for(item: dict, scope=None) -> Step:
             if extra:
                 summary += (f"; the first {MAX_ORIGINS} in scope are tried, {len(extra)} more "
                             "aren't (they keep the verdict from ruling it out)")
+        return Step(sid, rule, where, "active", summary, requests=requests,
+                    ready=ready, blocked=blocked)
+
+    if rule == "exposed_file":
+        ready, blocked, requests = _exposed_file(item, scope)
+        host = (t.get("hosts") or ["?"])[0]
+        files = t.get("files") or []
+        summary = (f"ask {host} again for the {len(files)} file{'s' if len(files) != 1 else ''} Monomi "
+                   "found, and check each is still the real thing")
+        tried, extra, refused = exposed_file.files_to_try(item)
+        if extra:
+            summary += (f"; the first {exposed_file.MAX_FILES} are asked, {len(extra)} more "
+                        "aren't (they keep the verdict from ruling it out)")
+        if refused and ready:
+            summary += f"; {len(refused)} can't be asked (named in the verdict)"
         return Step(sid, rule, where, "active", summary, requests=requests,
                     ready=ready, blocked=blocked)
 

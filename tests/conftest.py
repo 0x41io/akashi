@@ -149,3 +149,26 @@ def many_origins_scan(tmp_path, origins=3):
         results["enrichment"]["hosts"][host] = _host(ip, "DigitalOcean")
         results["exposure"]["ips"][ip] = _ip([host], "DigitalOcean", False)
     return _save(results, tmp_path, "many.json")
+
+
+def files_scan(tmp_path, files=None, host="staging.files.test"):
+    """A scan with an exposed_file path (Monomi v1.27): --content found files on
+    one host. files: [(path, kind, severity, what)]; the default is a .env and
+    a Git HEAD, the 41xlab staging plants."""
+    files = files or [("/.env", "env", "secrets", "an environment file with 3 settings, 1 named like secrets"),
+                      ("/.git/HEAD", "git_head", "source", "a Git HEAD file")]
+    names = ["files.test", host]
+    results = {
+        "target": "files.test",
+        "sources": {"certspotter": {"source": "certspotter", "subdomains": names, "collected_at": T}},
+        "errors": {},
+        "subdomains": sorted(names),
+        "enrichment": {"hosts": {h: _host("203.0.113.30", "DigitalOcean") for h in names},
+                       "private_ip_hosts": [], "collected_at": T},
+        "content": {"hosts": {host: {
+            "host": host, "scheme": "https", "leads": [], "untrusted": [], "calibration": [404, 404, 404],
+            "tried": 155, "requests": 158, "stopped": None, "https_error": None, "collected_at": T,
+            "found": [{"path": p, "url": f"https://{host}{p}", "kind": k, "severity": s, "what": w,
+                       "status": 200} for p, k, s, w in files]}}},
+    }
+    return _save(results, tmp_path, "files.json")

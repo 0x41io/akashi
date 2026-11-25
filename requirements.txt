@@ -2,7 +2,7 @@
 # (requests, dnspython, ...). Pinned to the release whose contract test
 # (monomi/tests/test_contract.py) locks the scan fields Akashi reads.
 # Must match the pin in pyproject.toml exactly, so the 0x41 suite installs one
-# Monomi (tests/test_pins.py checks it). v1.25.0: the scope check reads the host
-# requests really connects to.
-monomi @ git+https://github.com/0x41io/monomi@v1.25.0
+# Monomi (tests/test_pins.py checks it). v1.27.0: exposed_file paths and
+# content.recheck_file, which the exposed-files proof calls.
+monomi @ git+https://github.com/0x41io/monomi@v1.27.0
 tldextract>=5

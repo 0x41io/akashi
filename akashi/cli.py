@@ -168,8 +168,7 @@ def cmd_verify(args) -> int:
     if passive:
         bits.append(f"{len(passive)} passive (DNS/registry, never contact the target)")
     if active:
-        bits.append(f"{len(active)} active (one request through the CDN and one to the "
-                    "origin, inside scope)")
+        bits.append(f"{len(active)} active (the requests listed above, inside scope)")
     print(f"\nRun {len(passive) + len(active)} check(s) now? " + "; ".join(bits) + ".")
     if _ask("Type yes to run, anything else to cancel: ").strip().lower() != "yes":
         print("Cancelled. Nothing was sent.")
@@ -267,8 +266,7 @@ def cmd_recheck(args) -> int:
     if passive:
         bits.append(f"{len(passive)} passive (DNS/registry, never contact the target)")
     if active:
-        bits.append(f"{len(active)} active (one request through the CDN and one to the "
-                    "origin, inside scope)")
+        bits.append(f"{len(active)} active (the requests listed above, inside scope)")
     print(f"\nRe-run {len(passive) + len(active)} check(s) now? " + "; ".join(bits) + ".")
     if _ask("Type yes to run, anything else to cancel: ").strip().lower() != "yes":
         print("Cancelled. Nothing was sent.")
