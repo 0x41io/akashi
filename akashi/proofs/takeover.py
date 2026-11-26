@@ -65,8 +65,9 @@ def prove(item: dict) -> Verdict:
         ev.append(reason)
         if status == registry.REGISTERED:
             return Verdict(item["id"], rule, RULED_OUT,
-                           f"{host} dangles at {cname}, but {domain} is registered, so an attacker "
-                           "can't claim it", ev, now)
+                           f"{host} dangles at {cname}, but {domain} is registered, so it can't be "
+                           "claimed by registering the domain; the service isn't one Monomi knows lets "
+                           "deleted names be claimed again", ev, now)
         return Verdict(item["id"], rule, INCONCLUSIVE,
                        f"{host} still dangles at {cname} and no owner was found for {domain}; "
                        "confirm by hand before treating it as claimable", ev, now)

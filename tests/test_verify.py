@@ -81,6 +81,10 @@ def test_takeover_unknown_registered_domain_is_ruled_out(monkeypatch):
     set_registry(monkeypatch, registry.REGISTERED)
     v = verify.prove(takeover_item(rule="takeover_unknown", cname="gone-zz9.unknownhost.com"))
     assert v.status == RULED_OUT and "registered" in v.headline
+    # Says what was checked, no more (v0.6.1, from PlayStation: gigya.com, siteforce.com):
+    # registering the domain is ruled out; a claim inside the vendor's platform isn't tested
+    assert "can't be claimed by registering the domain" in v.headline
+    assert "an attacker can't claim it" not in v.headline
 
 
 def test_takeover_unknown_no_owner_found_is_inconclusive(monkeypatch):

@@ -3,11 +3,12 @@ Registry (RDAP) lookup: is a domain registered, or free for anyone to take?
 
 Used to settle a takeover_unknown lead. Monomi flags it when a hostname's CNAME
 points at a name on a service it doesn't recognise. Whether an attacker could
-claim it comes down to one question: is the CNAME target's registrable domain
-registered?
+claim it by registering a domain comes down to one question: is the CNAME
+target's registrable domain registered? (A claim inside a vendor's own
+platform is a different question, which this doesn't test.)
 
-  - registered  -> someone owns it, so an attacker can't claim it (rules the
-                   lead out)
+  - registered  -> someone owns it, so it can't be claimed by registering it
+                   (rules the lead out)
   - anything else (no active registration found, no RDAP for the TLD, an error,
                    a reserved TLD) -> left inconclusive. A "free" answer from a
                    redirector is ambiguous (truly free vs no RDAP service), and
