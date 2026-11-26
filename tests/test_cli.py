@@ -46,18 +46,26 @@ def test_plan_passive_only_scan_says_so(tmp_path, capsys):
     assert "would send:" not in out
 
 
-def test_plan_names_a_dangling_ns_lead(tmp_path, capsys):
+def test_plan_shows_the_dangling_ns_proof_and_its_one_direct_query(tmp_path, capsys):
+    # v0.7.0: no longer "not handled"; the plan says up front what it will ask
     code = main(["plan", conftest.dangling_ns_scan(tmp_path)])
     out = capsys.readouterr().out
     assert code == 0
-    assert "Not handled yet" in out and "dangling_ns" in out
+    assert "Not handled yet" not in out
+    assert "passive dns+parent" in out and "lame.lame-ns.test" in out
+    assert "ask one of the parent zone's nameservers, once" in out
 
 
 def test_unhandled_line_names_no_old_version(tmp_path, capsys):
     # v0.2.5: the line said "Akashi v0.1 proves" long after v0.1
-    main(["plan", conftest.dangling_ns_scan(tmp_path)])
+    import json
+    path = conftest.cdn_and_email_scan(tmp_path)
+    scan = json.loads(open(path).read())
+    scan["paths"]["leads"].append({"id": "L9", "rule": "side_door", "targets": {"hosts": ["x"], "ips": ["y"]}})
+    open(path, "w").write(json.dumps(scan))
+    main(["plan", path])
     out = capsys.readouterr().out
-    assert "Not handled yet (Akashi proves takeover," in out
+    assert "Not handled yet (Akashi proves takeover," in out and "dangling_ns" in out
     assert "v0.1" not in out
 
 

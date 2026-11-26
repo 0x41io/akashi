@@ -16,7 +16,7 @@ MIN_MONOMI = (1, 15, 0)
 
 # The rules Akashi knows how to prove. Everything else in a scan is left
 # alone (reported as "not handled yet"), never guessed at.
-PROVABLE = ("takeover", "takeover_unknown", "email_spoofing", "around_cdn", "exposed_file")
+PROVABLE = ("takeover", "takeover_unknown", "email_spoofing", "around_cdn", "exposed_file", "dangling_ns")
 
 
 class ScanError(Exception):
@@ -92,6 +92,7 @@ def lead_key(item: dict) -> str:
       exposed_file                -> the host alone (mønømi v1.27): its file list
                                      shrinks as files are removed, and its IPs
                                      rotate behind a CDN, but it's the same question
+      dangling_ns                 -> the zone cut (v0.7.0): the hosts under it come and go
       anything else               -> its hosts and IPs
 
     e.g. "takeover:old-app.example.test>old-app.azurewebsites.net".
@@ -102,6 +103,8 @@ def lead_key(item: dict) -> str:
         parts = [",".join(_names(t.get("hosts"))), str(t.get("cname") or "").lower().rstrip(".")]
     elif rule == "email_spoofing":
         parts = [",".join(_names(t.get("hosts")))]
+    elif rule == "dangling_ns":
+        parts = [str(t.get("cut") or "").lower().rstrip(".")]
     elif rule == "around_cdn" and "origins" in t:
         # mønømi v1.24: one lead per CDN, so its fronted hosts and CDN name it.
         # Its origin IPs change (load balancers rotate), and with them in the

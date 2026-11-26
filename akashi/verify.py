@@ -1,6 +1,8 @@
 """
 Run the proofs. The passive ones (DNS and registry) ask public services about
-a name and never contact the target. The active ones (around_cdn, and since
+a name and send nothing to the target's web servers (since v0.7.0 the
+broken-delegation proof also asks the parent zone's nameserver one DNS
+question, named in its evidence). The active ones (around_cdn, and since
 v0.6.0 exposed_file) run only inside scope, after the typed yes.
 
 The CLI handles showing the plan, the typed yes, printing and recording; this
@@ -10,7 +12,7 @@ inconclusive verdict rather than a crash.
 
 from akashi import activelog, fixes
 from akashi.scan import lead_key
-from akashi.proofs import around_cdn, email, exposed_file, takeover
+from akashi.proofs import around_cdn, dangling_ns, email, exposed_file, takeover
 from akashi.verdict import CONFIRMED, INCONCLUSIVE, Verdict
 
 # rule -> the function that proves it, for the checks that never touch the target
@@ -18,6 +20,7 @@ PASSIVE_PROOFS = {
     "takeover": takeover.prove,
     "takeover_unknown": takeover.prove,
     "email_spoofing": email.prove,
+    "dangling_ns": dangling_ns.prove,  # v0.7.0: one direct query to the parent zone's nameserver
 }
 
 # rule -> the function that proves it, for the checks that send real requests

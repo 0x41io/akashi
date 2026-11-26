@@ -16,8 +16,12 @@ from akashi.proofs import exposed_file
 # How a proof reaches its answer, and whether it touches the target at all:
 #   dns          only asks public DNS resolvers about a name (never the target)
 #   dns+registry the above plus a domain-registry (RDAP) lookup
+#   dns+parent   the above plus ONE non-recursive DNS query to a nameserver of
+#                the parent zone (v0.7.0, dangling_ns): the question every
+#                resolver asks while looking a name up, sent to the target's
+#                DNS provider, never to its web servers
 #   active       sends a request to the target or its origin server
-PASSIVE_KINDS = ("dns", "dns+registry")
+PASSIVE_KINDS = ("dns", "dns+registry", "dns+parent")
 
 
 @dataclass
@@ -147,6 +151,13 @@ def step_for(item: dict, scope=None) -> Step:
         domain = (t.get("hosts") or ["?"])[0]
         return Step(sid, rule, where, "dns", f"re-check SPF, DMARC and DKIM for {domain}",
                     looks_up=[domain])
+
+    if rule == "dangling_ns":
+        cut = t.get("cut", "?")
+        summary = (f"re-check that {cut} is still a broken delegation (both DoH resolvers); ask one "
+                   f"of the parent zone's nameservers, once, which nameservers {cut} is delegated "
+                   "to; then look up whether their domains are registered")
+        return Step(sid, rule, where, "dns+parent", summary, looks_up=[cut])
 
     if rule == "around_cdn":
         ready, blocked, requests = _around_cdn(item, scope)

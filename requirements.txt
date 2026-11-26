@@ -4,5 +4,5 @@
 # Must match the pin in pyproject.toml exactly, so the 0x41 suite installs one
 # Monomi (tests/test_pins.py checks it). v1.27.0: exposed_file paths and
 # content.recheck_file, which the exposed-files proof calls.
-monomi @ git+https://github.com/0x41io/monomi@v1.28.0
+monomi @ git+https://github.com/0x41io/monomi@v1.28.1
 tldextract>=5

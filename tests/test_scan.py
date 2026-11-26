@@ -77,18 +77,23 @@ def test_unhandled_lists_rules_akashi_cant_prove(tmp_path):
     assert not ({i["rule"] for i in left} & set(PROVABLE))
 
 
-def test_dangling_ns_from_monomi_is_named_not_proved(tmp_path):
-    # Monomi v1.17's new rule: Akashi has no proof for it yet, so it must be
-    # listed as unhandled (never dropped, never handed to a proof)
+def test_dangling_ns_from_monomi_is_provable(tmp_path):
+    # Monomi v1.17's rule, unhandled until v0.7.0: now handed to its proof
     scan = load_scan(conftest.dangling_ns_scan(tmp_path))
     assert scan_version(scan) >= (1, 17, 0)
-    assert "dangling_ns" not in PROVABLE
-    assert provable(scan) == []
-    left = unhandled(scan)
-    assert [i["rule"] for i in left] == ["dangling_ns"]
-    t = left[0]["targets"]
-    assert t["cut"] == "lame.lame-ns.test" and t["grade"] == "theoretical"
+    assert "dangling_ns" in PROVABLE
+    assert unhandled(scan) == []
+    [item] = provable(scan)
+    t = item["targets"]
+    assert item["rule"] == "dangling_ns" and t["cut"] == "lame.lame-ns.test" and t["grade"] == "theoretical"
     assert sorted(t["hosts"]) == ["app.lame.lame-ns.test", "www.lame.lame-ns.test"]
+
+
+def test_dangling_ns_key_is_the_cut():
+    # the hosts under a cut come and go; the question is the cut itself
+    a = {"rule": "dangling_ns", "targets": {"cut": "Dev.Example.com.", "hosts": ["a.dev.example.com"]}}
+    b = {"rule": "dangling_ns", "targets": {"cut": "dev.example.com", "hosts": ["b.dev.example.com"]}}
+    assert lead_key(a) == lead_key(b)
 
 
 # ---------- lead_key: a stable name from rule + targets (v0.1.1) ----------

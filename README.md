@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.6.1.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.7.0.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -112,6 +112,15 @@ out not to exist. Akashi is built the other way around.
 > names nobody on the internet can create (`*.internal.aws` and other brand or private TLDs) and
 > lists around-the-CDN origins likeliest first, so the five Akashi tries go to the best candidates.
 > Licensed AGPL-3.0-only from this version on; earlier versions stay MIT.
+>
+> v0.7.0 proves mønømi's **broken DNS delegations** (`dangling_ns`), until now listed as "not
+> handled yet": a zone delegated to nameservers that refuse it. Akashi re-checks it's still broken,
+> asks one of the parent zone's own nameservers, once, which nameservers the zone is delegated to
+> (the question every resolver asks while looking a name up, sent to the DNS provider, never to the
+> target's web servers), and looks up whether their domains are registered. A nameserver on a domain
+> with no registration found is the dangerous case, since whoever registers it answers DNS for the
+> whole zone, and like every "free" answer it's **inconclusive: confirm by hand**, never "go claim
+> it". Pins [mønømi](https://github.com/0x41io/monomi) v1.28.1 (Route 53 delegations graded right).
 
 ## What it proves
 
@@ -124,6 +133,7 @@ lead is without reading its text.
 | `takeover_unknown` | The same DNS re-check, plus a registry (RDAP) lookup: if the target's domain is registered, an attacker can't claim it (ruled out); otherwise inconclusive, since claiming a domain is a human decision | No — DNS + registry |
 | `around_cdn` | One request to the fronted host through the CDN, one to the origin IP with the same `Host` header; compare the responses. A stock default page or a short generic title never counts as a match | Yes — one request each |
 | `exposed_file` (v0.6.0) | For each file found (up to 5): three made-up paths on the host, then the file, judged by mønømi's own content check. Confirmed if any is still the real file; ruled out only when all are gone | Yes — four requests per file |
+| `dangling_ns` (v0.7.0) | Re-check over DoH that the zone is still a broken delegation (fixed: ruled out). Then one non-recursive NS query to a nameserver of the parent zone, for the exact nameservers it's delegated to, and an RDAP lookup of each one's domain. Never confirmed: a nameserver on an unregistered domain is inconclusive with "confirm by hand", and registered ones say who runs them (Route 53: a large pool, impractical) | No — DNS + registry, plus one query to the parent zone's nameserver (named in the evidence) |
 | `email_spoofing` | Fresh SPF / DMARC / DKIM lookup. The evidence names the SPF `all` rule, the DKIM selectors found and whether DMARC reports (`rua=`) are collected, and the fix is built from that setup (v0.1.3): reports first, what's already in place, the senders SPF lists, then enforce | No — DNS only |
 
 Every verdict is **confirmed**, **ruled out**, or **inconclusive** (the default),

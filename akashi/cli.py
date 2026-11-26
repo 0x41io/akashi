@@ -54,6 +54,17 @@ def _print_unhandled(scan):
     print()
 
 
+def _passive_words(passive, steps) -> str:
+    """How the yes-prompt describes the passive checks: DNS and registry
+    lookups, and (v0.7.0) a broken-delegation check's one question to the
+    parent zone's nameserver, which is the target's DNS provider (or the
+    target itself, if it runs its own DNS), so it's named instead of "never
+    contacts the target"."""
+    parent = sum(1 for s in steps if s.kind == "dns+parent")
+    also = f"; {parent} of them also ask the parent zone's nameserver one DNS question" if parent else ""
+    return f"{len(passive)} passive (DNS/registry lookups, nothing sent to the target's web servers{also})"
+
+
 PLAN_FOOTER = "`plan` sends nothing. `akashi verify` (after a typed yes) runs the ready checks."
 RECHECK_FOOTER = "`recheck` re-runs these checks after a typed yes to see if the fix closed them."
 
@@ -166,7 +177,7 @@ def cmd_verify(args) -> int:
     # sent. --yes never skips it; the plan shown is the only thing sent.
     bits = []
     if passive:
-        bits.append(f"{len(passive)} passive (DNS/registry, never contact the target)")
+        bits.append(_passive_words(passive, steps))
     if active:
         bits.append(f"{len(active)} active (the requests listed above, inside scope)")
     print(f"\nRun {len(passive) + len(active)} check(s) now? " + "; ".join(bits) + ".")
@@ -264,7 +275,7 @@ def cmd_recheck(args) -> int:
 
     bits = []
     if passive:
-        bits.append(f"{len(passive)} passive (DNS/registry, never contact the target)")
+        bits.append(_passive_words(passive, steps))
     if active:
         bits.append(f"{len(active)} active (the requests listed above, inside scope)")
     print(f"\nRe-run {len(passive) + len(active)} check(s) now? " + "; ".join(bits) + ".")
