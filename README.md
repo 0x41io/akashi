@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.6.0.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.6.1.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -104,6 +104,14 @@ out not to exist. Akashi is built the other way around.
 > what it holds. A confirmed secrets file's fix says to change everything in it, not just remove it.
 > Akashi now pins [mønømi](https://github.com/0x41io/monomi) v1.27.0, and every active log line
 > names the rule it was for (`exposed_file` or `around_cdn`).
+>
+> v0.6.1 says exactly what a registered vendor domain rules out: a dangling CNAME at an unknown
+> service whose domain is registered is ruled out because it "can't be claimed by registering the
+> domain", no longer "an attacker can't claim it" (a claim inside the vendor's own platform isn't
+> tested). It pins [mønømi](https://github.com/0x41io/monomi) v1.28.0, which stops sending leads for
+> names nobody on the internet can create (`*.internal.aws` and other brand or private TLDs) and
+> lists around-the-CDN origins likeliest first, so the five Akashi tries go to the best candidates.
+> Licensed AGPL-3.0-only from this version on; earlier versions stay MIT.
 
 ## What it proves
 
