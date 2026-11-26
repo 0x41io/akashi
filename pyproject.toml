@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 name = "akashi"
 description = "0x41 / akashi - prove Monomi's leads, give the fix, re-check"
 readme = "README.md"
-license = "MIT"
+license = "AGPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [{ name = "0x41" }]
 requires-python = ">=3.14"
