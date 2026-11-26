@@ -35,7 +35,7 @@ def fake(monkeypatch, lame=ROUTE53_LAME, names=("ns-1.awsdns-01.org",), rcode="N
                 "no_delegation": no_delegation}
     monkeypatch.setattr(dangling_ns, "parent_server", parent)
     monkeypatch.setattr(dangling_ns, "ask_parent", ask)
-    status = registry.REGISTERED if registered else registry.UNKNOWN
+    status = {True: registry.REGISTERED, False: registry.NOT_FOUND}.get(registered, registered)
     monkeypatch.setattr(registry, "registration",
                         lambda domain: (status, f"RDAP says {domain} is {'registered' if registered else 'unknown'}"))
     return asked
@@ -179,3 +179,13 @@ def test_the_yes_prompt_names_the_parent_zone_question(tmp_path, monkeypatch, ca
     assert "1 of them also ask the parent zone's nameserver one DNS question" in out
     assert "never contact the target" not in out
     assert "Cancelled. Nothing was sent." in out
+
+
+def test_a_rate_limited_registry_never_raises_the_alarm(monkeypatch):
+    """PlayStation prod21: RDAP said 429 for awsdns-02.net, and the proof called it
+    "no registration found". A registry that couldn't be checked says so."""
+    fake(monkeypatch, names=("ns-535.awsdns-02.net",), registered=registry.UNKNOWN)
+    v = verify.prove(item())
+    assert v.status == INCONCLUSIVE
+    assert "couldn't be checked for awsdns-02.net; run it again later" in v.headline
+    assert "no registration was found" not in v.headline

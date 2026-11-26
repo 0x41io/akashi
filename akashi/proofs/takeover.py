@@ -68,9 +68,13 @@ def prove(item: dict) -> Verdict:
                            f"{host} dangles at {cname}, but {domain} is registered, so it can't be "
                            "claimed by registering the domain; the service isn't one Monomi knows lets "
                            "deleted names be claimed again", ev, now)
+        if status == registry.NOT_FOUND:
+            return Verdict(item["id"], rule, INCONCLUSIVE,
+                           f"{host} still dangles at {cname} and no owner was found for {domain}; "
+                           "confirm by hand before treating it as claimable", ev, now)
         return Verdict(item["id"], rule, INCONCLUSIVE,
-                       f"{host} still dangles at {cname} and no owner was found for {domain}; "
-                       "confirm by hand before treating it as claimable", ev, now)
+                       f"{host} still dangles at {cname}, but the registry couldn't be checked for "
+                       f"{domain}; run it again later", ev, now)
 
     return Verdict(item["id"], rule, CONFIRMED,
                    f"{host} still points at {cname}, which still does not exist on both "

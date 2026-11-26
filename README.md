@@ -121,6 +121,9 @@ out not to exist. Akashi is built the other way around.
 > with no registration found is the dangerous case, since whoever registers it answers DNS for the
 > whole zone, and like every "free" answer it's **inconclusive: confirm by hand**, never "go claim
 > it". Pins [mønømi](https://github.com/0x41io/monomi) v1.28.1 (Route 53 delegations graded right).
+> The registry check now tells "no registration found" (HTTP 404) apart from "couldn't check" (a
+> rate limit, an error): only the first can raise the confirm-by-hand alarm, for takeovers too. Each
+> domain is asked once per run, and a rate limit waits once, as the registry asks, before trying again.
 
 ## What it proves
 

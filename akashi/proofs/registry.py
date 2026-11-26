@@ -23,6 +23,8 @@ Suffix List snapshot, so it's correct for cases like .co.uk and github.io and
 never makes a surprise network call.
 """
 
+import time
+
 import requests
 import tldextract
 from monomi.common import USER_AGENT
@@ -34,7 +36,15 @@ _extract = tldextract.TLDExtract(suffix_list_urls=())
 RDAP_BASE = "https://rdap.org/domain/"
 
 REGISTERED = "registered"
+# v0.7.0: a 404 ("no active registration") is NOT_FOUND, kept apart from
+# UNKNOWN (couldn't check: rate-limited, an error, a timeout). Neither is
+# "free", but only NOT_FOUND may raise the "confirm by hand" alarm: a 429 once
+# read as "no registration found" for one of Amazon's own awsdns domains.
+NOT_FOUND = "not_found"
 UNKNOWN = "unknown"
+
+RATE_LIMIT_WAIT = 5     # seconds to wait after a 429, at most, before the one retry
+_seen = {}              # domain -> (status, evidence), so a run asks each domain once
 
 
 def registrable(name: str) -> str:
@@ -43,17 +53,38 @@ def registrable(name: str) -> str:
     return _extract(name).top_domain_under_public_suffix or ""
 
 
+def _ask(domain: str):
+    return requests.get(RDAP_BASE + domain, timeout=15,
+                        headers={"User-Agent": USER_AGENT}, allow_redirects=True)
+
+
 def registration(domain: str) -> tuple[str, str]:
-    """(status, evidence) for a registrable domain. status is REGISTERED only
-    when RDAP positively says so; everything else is UNKNOWN, never "free"."""
+    """(status, evidence) for a registrable domain: REGISTERED only when RDAP
+    positively says so, NOT_FOUND for its "no active registration" (404),
+    UNKNOWN when it couldn't be checked. Never "free". Each domain is asked
+    once per run; a 429 (too many requests) waits once, as RDAP asks, up to
+    RATE_LIMIT_WAIT seconds, and tries again."""
+    if domain in _seen:
+        return _seen[domain]
     try:
-        resp = requests.get(RDAP_BASE + domain, timeout=15,
-                            headers={"User-Agent": USER_AGENT}, allow_redirects=True)
+        resp = _ask(domain)
+        if resp.status_code == 429:
+            try:
+                wait = min(float(resp.headers.get("Retry-After", RATE_LIMIT_WAIT)), RATE_LIMIT_WAIT)
+            except ValueError:
+                wait = RATE_LIMIT_WAIT
+            time.sleep(max(wait, 0))
+            resp = _ask(domain)
     except requests.RequestException as e:
-        return UNKNOWN, f"RDAP lookup failed: {e}"
+        return UNKNOWN, f"RDAP lookup failed for {domain}: {e}"   # not cached: a retry may work
     if resp.status_code == 200:
-        return REGISTERED, f"RDAP says {domain} is registered (HTTP 200)"
-    if resp.status_code == 404:
-        return UNKNOWN, (f"RDAP has no active registration for {domain} (HTTP 404) — but 404 can also "
-                         "mean the TLD has no RDAP service, so verify by hand before treating it as claimable")
-    return UNKNOWN, f"RDAP returned HTTP {resp.status_code} for {domain}; can't say"
+        out = (REGISTERED, f"RDAP says {domain} is registered (HTTP 200)")
+    elif resp.status_code == 404:
+        out = (NOT_FOUND, f"RDAP has no active registration for {domain} (HTTP 404) — but 404 can also "
+                          "mean the TLD has no RDAP service, so verify by hand before treating it as claimable")
+    elif resp.status_code == 429:
+        return UNKNOWN, f"RDAP rate-limited the lookup for {domain} (HTTP 429), even after waiting; can't say"
+    else:
+        out = (UNKNOWN, f"RDAP returned HTTP {resp.status_code} for {domain}; can't say")
+    _seen[domain] = out
+    return out

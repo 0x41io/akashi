@@ -148,7 +148,7 @@ def prove(item: dict) -> Verdict:
 
     # 3. can those nameservers be had?
     zone_owner = registry.registrable(zone)
-    free = []
+    free, unchecked = [], []
     for ns in names:
         domain = registry.registrable(ns)
         if domain and domain == zone_owner:
@@ -159,8 +159,10 @@ def prove(item: dict) -> Verdict:
             continue
         status, why = registry.registration(domain)
         ev.append(f"{ns}: {why}")
-        if status != registry.REGISTERED:
+        if status == registry.NOT_FOUND:
             free.append((ns, domain))
+        elif status != registry.REGISTERED:
+            unchecked.append(domain)
     runs = sorted({p for p in (provider_of(ns) for ns in names) if p}) or ([pool] if pool else [])
     who = f" ({', '.join(runs)})" if runs else ""
 
@@ -170,6 +172,11 @@ def prove(item: dict) -> Verdict:
                        f"{zone} is delegated to {ns}{higher}, and no registration was found for {domain}: "
                        f"if it's free, whoever registers it answers DNS for every name under {zone}. "
                        "Confirm by hand before treating it as claimable", ev, now)
+    if unchecked:
+        return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
+                       f"{zone} is still delegated to {', '.join(names[:4])}{who}{higher}, but the registry "
+                       f"couldn't be checked for {', '.join(sorted(set(unchecked)))}; run it again later",
+                       ev, now)
     if grade == "theoretical" or "AWS Route 53" in runs:
         why = ("Route 53 assigns nameservers from a large pool, so getting this exact set again "
                "is impractical")

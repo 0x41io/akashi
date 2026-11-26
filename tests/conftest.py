@@ -13,6 +13,16 @@ T = "2026-11-08T12:00:00+00:00"
 
 
 @pytest.fixture(autouse=True)
+def fresh_registry_cache():
+    """registry.registration() remembers each domain for the run (v0.7.0):
+    every test starts with an empty memory, so no answer leaks between tests."""
+    from akashi.proofs import registry
+    registry._seen.clear()
+    yield
+    registry._seen.clear()
+
+
+@pytest.fixture(autouse=True)
 def no_network(monkeypatch):
     """Fail any test that tries to reach the network. Tests must stub DNS,
     email and HTTP. A blocked call raises inside the code (which may turn it

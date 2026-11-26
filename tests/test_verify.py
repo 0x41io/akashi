@@ -90,9 +90,19 @@ def test_takeover_unknown_registered_domain_is_ruled_out(monkeypatch):
 def test_takeover_unknown_no_owner_found_is_inconclusive(monkeypatch):
     from akashi.proofs import registry
     set_dns(monkeypatch, "gone-zz9.unknownhost.com", False, ["Cloudflare", "Google"])
-    set_registry(monkeypatch, registry.UNKNOWN)
+    set_registry(monkeypatch, registry.NOT_FOUND)
     v = verify.prove(takeover_item(rule="takeover_unknown", cname="gone-zz9.unknownhost.com"))
     assert v.status == INCONCLUSIVE and "confirm by hand" in v.headline
+
+
+def test_takeover_unknown_registry_unreachable_says_so(monkeypatch):
+    # v0.7.0: a registry that couldn't be checked is never "no owner found"
+    from akashi.proofs import registry
+    set_dns(monkeypatch, "gone-zz9.unknownhost.com", False, ["Cloudflare", "Google"])
+    set_registry(monkeypatch, registry.UNKNOWN)
+    v = verify.prove(takeover_item(rule="takeover_unknown", cname="gone-zz9.unknownhost.com"))
+    assert v.status == INCONCLUSIVE and "couldn't be checked" in v.headline
+    assert "no owner was found" not in v.headline
 
 
 # ---------- email ----------
