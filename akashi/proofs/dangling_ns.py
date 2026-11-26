@@ -73,19 +73,37 @@ def parent_server(cut: str) -> tuple[str, str]:
     raise LookupError(f"none of {zone.to_text().rstrip('.')}'s nameservers has an IPv4 address")
 
 
-def ask_parent(cut: str, server_ip: str) -> tuple[str, list[str]]:
-    """The one direct query: (rcode text, NS names the cut is delegated to),
-    from a non-recursive NS question to the parent's nameserver. The names
-    come from the referral (authority section) or, if that server also holds
-    the cut, the answer."""
+def ask_parent(cut: str, server_ip: str) -> dict:
+    """The one direct query: a non-recursive NS question to the parent's
+    nameserver. Returns {"rcode", "names", "via", "via_names", "no_delegation"}:
+      names          NS names for the cut itself (a referral, or an answer if
+                     that server also holds the cut)
+      via, via_names a referral for a zone BETWEEN the parent and the cut
+                     (v0.7.0, PlayStation pcs-nonprod: when that zone is itself
+                     broken, the lookup for "the zone above" skips past it, and
+                     the server asked refers onward to it). The delegation that
+                     matters then sits at `via`
+      no_delegation  the server answered for its own zone with no NS for the
+                     cut (an SOA in the authority section): no delegation there
+    """
     q = dns.message.make_query(cut, dns.rdatatype.NS)
     q.flags &= ~dns.flags.RD          # don't ask it to look anything up for us
     r = dns.query.udp(q, server_ip, timeout=QUERY_TIMEOUT)
-    names = []
+    cut = cut.lower().rstrip(".")
+    names, via, via_names, soa = [], "", [], False
     for rrset in list(r.answer) + list(r.authority):
-        if rrset.rdtype == dns.rdatatype.NS and rrset.name.to_text().rstrip(".").lower() == cut.lower():
-            names += [str(rd.target).rstrip(".").lower() for rd in rrset]
-    return dns.rcode.to_text(r.rcode()), sorted(set(names))
+        owner = rrset.name.to_text().rstrip(".").lower()
+        if rrset.rdtype == dns.rdatatype.SOA:
+            soa = True
+        if rrset.rdtype != dns.rdatatype.NS:
+            continue
+        targets = sorted({str(rd.target).rstrip(".").lower() for rd in rrset})
+        if owner == cut:
+            names += targets
+        elif cut.endswith("." + owner) and len(owner) > len(via):
+            via, via_names = owner, targets      # the closest zone above the cut
+    return {"rcode": dns.rcode.to_text(r.rcode()), "names": sorted(set(names)), "via": via,
+            "via_names": via_names, "no_delegation": soa and not names and not via}
 
 
 def prove(item: dict) -> Verdict:
@@ -107,22 +125,29 @@ def prove(item: dict) -> Verdict:
     # 2. which nameservers? (the one direct query)
     try:
         server, ip = parent_server(cut)
-        rcode, names = ask_parent(cut, ip)
+        answer = ask_parent(cut, ip)
     except Exception as e:  # DNS down, port 53 blocked, a timeout: say so, never guess
         ev.append(f"couldn't ask the parent zone's nameservers who {cut} is delegated to: {e}")
         on = f" ({pool})" if pool else ""
         return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
                        f"{cut} is still a broken delegation{on}, but its exact nameservers couldn't "
                        "be learned from the parent zone; check them by hand (dig +trace)", ev, now)
-    ev.append(f"asked {server} ({ip}) once, non-recursively, for {cut}'s NS: {rcode}, "
-              + (", ".join(names) if names else "no NS records"))
+    names, zone = answer["names"], cut
+    said = ", ".join(names) if names else "no NS records"
+    if not names and answer["via"]:
+        names, zone = answer["via_names"], answer["via"]
+        said = f"a referral to {zone} ({', '.join(names)})"
+    ev.append(f"asked {server} ({ip}) once, non-recursively, for {cut}'s NS: {answer['rcode']}, {said}")
     if not names:
+        why = (f"answers for its own zone with no delegation for {cut}" if answer["no_delegation"]
+               else "names no nameservers for it")
         return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
-                       f"{cut} still fails, but the parent zone's nameserver ({server}) names no "
-                       "nameservers for it; check by hand", ev, now)
+                       f"{cut} still fails, but the parent zone's nameserver ({server}) {why}; the break "
+                       "may sit elsewhere: check by hand (dig +trace)", ev, now)
+    higher = f" (the delegation sits higher, at {zone})" if zone != cut else ""
 
     # 3. can those nameservers be had?
-    zone_owner = registry.registrable(cut)
+    zone_owner = registry.registrable(zone)
     free = []
     for ns in names:
         domain = registry.registrable(ns)
@@ -142,8 +167,8 @@ def prove(item: dict) -> Verdict:
     if free:
         ns, domain = free[0]
         return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
-                       f"{cut} is delegated to {ns}, and no registration was found for {domain}: if "
-                       f"it's free, whoever registers it answers DNS for every name under {cut}. "
+                       f"{zone} is delegated to {ns}{higher}, and no registration was found for {domain}: "
+                       f"if it's free, whoever registers it answers DNS for every name under {zone}. "
                        "Confirm by hand before treating it as claimable", ev, now)
     if grade == "theoretical" or "AWS Route 53" in runs:
         why = ("Route 53 assigns nameservers from a large pool, so getting this exact set again "
@@ -151,5 +176,5 @@ def prove(item: dict) -> Verdict:
     else:
         why = "whether that DNS service lets anyone recreate the zone wasn't checked"
     return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
-                   f"{cut} is still delegated to {', '.join(names[:4])}{who}, every one on a "
+                   f"{zone} is still delegated to {', '.join(names[:4])}{who}{higher}, every one on a "
                    f"registered domain, so it can't be had by registering one; {why}", ev, now)

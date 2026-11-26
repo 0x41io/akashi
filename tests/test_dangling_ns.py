@@ -20,7 +20,7 @@ def item():
 
 
 def fake(monkeypatch, lame=ROUTE53_LAME, names=("ns-1.awsdns-01.org",), rcode="NOERROR",
-         registered=True, parent_error=None):
+         registered=True, parent_error=None, via="", via_names=(), no_delegation=False):
     asked = []
     monkeypatch.setattr(dangling_ns.dnscheck, "lame_delegation", lambda name: lame)
 
@@ -31,7 +31,8 @@ def fake(monkeypatch, lame=ROUTE53_LAME, names=("ns-1.awsdns-01.org",), rcode="N
 
     def ask(cut, ip):
         asked.append((cut, ip))
-        return rcode, sorted(names)
+        return {"rcode": rcode, "names": sorted(names), "via": via, "via_names": sorted(via_names),
+                "no_delegation": no_delegation}
     monkeypatch.setattr(dangling_ns, "parent_server", parent)
     monkeypatch.setattr(dangling_ns, "ask_parent", ask)
     status = registry.REGISTERED if registered else registry.UNKNOWN
@@ -94,6 +95,25 @@ def test_a_parent_that_names_no_nameservers_is_unclear(monkeypatch):
     assert v.status == INCONCLUSIVE and "names no nameservers" in v.headline
 
 
+def test_a_parent_with_no_delegation_for_the_cut_says_so(monkeypatch):
+    fake(monkeypatch, names=(), no_delegation=True)
+    v = verify.prove(item())
+    assert v.status == INCONCLUSIVE and "with no delegation for dev.example.com" in v.headline
+    assert "may sit elsewhere" in v.headline
+
+
+def test_a_referral_to_a_zone_in_between_is_where_the_delegation_sits(monkeypatch):
+    """PlayStation pcs-nonprod: the zone above the cut was itself broken, so the
+    server asked referred onward to it. The proof judges THAT delegation."""
+    fake(monkeypatch, lame=OTHER_LAME, names=(), via="example.com", via_names=("ns1.gone-dns-zz9.com",),
+         registered=False)
+    v = verify.prove({**item(), "targets": {**item()["targets"], "cut": "a.dev.example.com"}})
+    assert v.status == INCONCLUSIVE
+    assert v.headline.startswith("example.com is delegated to ns1.gone-dns-zz9.com (the delegation sits "
+                                 "higher, at example.com)")
+    assert any("a referral to example.com (ns1.gone-dns-zz9.com)" in e for e in v.evidence)
+
+
 @pytest.mark.parametrize("ns,who", [
     ("ns-1036.awsdns-01.org", "AWS Route 53"), ("ns1-01.azure-dns.com", "Azure DNS"),
     ("a1-64.akam.net", "Akamai"), ("ns1.digitalocean.com", "DigitalOcean"), ("ns1.example.net", None),
@@ -117,9 +137,35 @@ def test_the_direct_query_is_non_recursive_and_reads_the_referral(monkeypatch):
         r.authority.append(dns.rrset.from_text("other.example.com.", 300, "IN", "NS", "x.example.org."))
         return r
     monkeypatch.setattr(dangling_ns.dns.query, "udp", udp)
-    rcode, names = dangling_ns.ask_parent(CUT, "192.0.2.53")
+    got = dangling_ns.ask_parent(CUT, "192.0.2.53")
     assert sent == {"rd": False, "ip": "192.0.2.53", "timeout": dangling_ns.QUERY_TIMEOUT}
-    assert rcode == "NOERROR" and names == ["ns-1.awsdns-01.org", "ns-9.awsdns-09.net"]
+    assert got["rcode"] == "NOERROR" and got["names"] == ["ns-1.awsdns-01.org", "ns-9.awsdns-09.net"]
+    assert got["via"] == "" and not got["no_delegation"]
+
+
+def _respond(monkeypatch, *authority):
+    import dns.message
+    import dns.rrset
+
+    def udp(q, ip, timeout):
+        r = dns.message.make_response(q)
+        for owner, rtype, *data in authority:
+            r.authority.append(dns.rrset.from_text(owner, 300, "IN", rtype, *data))
+        return r
+    monkeypatch.setattr(dangling_ns.dns.query, "udp", udp)
+
+
+def test_ask_parent_keeps_a_referral_to_the_closest_zone_above_the_cut(monkeypatch):
+    _respond(monkeypatch, ("example.com.", "NS", "ns-1.awsdns-01.org."),
+             ("deep.dev.example.com.", "NS", "x.example.org."))  # below the cut: not a parent, ignored
+    got = dangling_ns.ask_parent("a.dev.example.com", "192.0.2.53")
+    assert got["names"] == [] and got["via"] == "example.com" and got["via_names"] == ["ns-1.awsdns-01.org"]
+
+
+def test_ask_parent_reads_an_soa_answer_as_no_delegation(monkeypatch):
+    _respond(monkeypatch, ("example.com.", "SOA", "ns1.example.com. host.example.com. 1 7200 900 1209600 86400"))
+    got = dangling_ns.ask_parent(CUT, "192.0.2.53")
+    assert got["names"] == [] and got["via"] == "" and got["no_delegation"]
 
 
 def test_the_yes_prompt_names_the_parent_zone_question(tmp_path, monkeypatch, capsys):
