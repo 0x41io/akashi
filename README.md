@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.7.2.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.7.3.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -134,6 +134,8 @@ out not to exist. Akashi is built the other way around.
 > A broken delegation's verdict also carries a reason code (`pooled_registered`, `ns_registered`,
 > `ns_unregistered`, `registry_unchecked`, `parent_unreachable`, `delegation_elsewhere`), since every
 > outcome but "fixed" is inconclusive: the code tells them apart without reading the headline.
+>
+> v0.7.3 pins mønømi v1.29.4 (API Gateway and ServiceNow servers are no longer read as the target's own).
 
 ## What it proves
 
