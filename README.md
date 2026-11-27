@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.7.0.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.7.1.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -124,6 +124,9 @@ out not to exist. Akashi is built the other way around.
 > The registry check now tells "no registration found" (HTTP 404) apart from "couldn't check" (a
 > rate limit, an error): only the first can raise the confirm-by-hand alarm, for takeovers too. Each
 > domain is asked once per run, and a rate limit waits once, as the registry asks, before trying again.
+>
+> v0.7.1 pins [mønømi](https://github.com/0x41io/monomi) v1.29.2 (BBOT import, every own server
+> checked on Shodan InternetDB, OpenSearch endpoints graded stale), so the suite installs together.
 
 ## What it proves
 
