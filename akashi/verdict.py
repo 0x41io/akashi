@@ -16,6 +16,14 @@ INCONCLUSIVE = "inconclusive"  # not enough to say either way; says what's missi
 # Reasons an inconclusive verdict can carry, so recheck (and later Kaidoku)
 # can explain it without parsing the headline.
 ORIGIN_SILENT = "origin_silent"  # origin timed out while the CDN still answered
+# dangling_ns (v0.7.2): every outcome but "fixed" is inconclusive, so the reason
+# is what tells them apart at a glance (0x41 shows it next to the "?")
+PARENT_UNREACHABLE = "parent_unreachable"    # the parent zone couldn't be asked
+DELEGATION_ELSEWHERE = "delegation_elsewhere"  # the parent names no nameservers for the cut
+NS_UNREGISTERED = "ns_unregistered"          # a nameserver's domain had no registration: confirm by hand
+REGISTRY_UNCHECKED = "registry_unchecked"    # the registry couldn't be checked: run it again later
+POOLED_REGISTERED = "pooled_registered"      # Route 53 (pooled), every domain registered: impractical
+NS_REGISTERED = "ns_registered"              # every domain registered; recreating the zone not checked
 
 
 @dataclass

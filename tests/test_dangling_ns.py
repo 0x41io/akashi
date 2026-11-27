@@ -189,3 +189,24 @@ def test_a_rate_limited_registry_never_raises_the_alarm(monkeypatch):
     assert v.status == INCONCLUSIVE
     assert "couldn't be checked for awsdns-02.net; run it again later" in v.headline
     assert "no registration was found" not in v.headline
+
+
+@pytest.mark.parametrize("case, reason", [
+    (dict(), "pooled_registered"),                                              # Route 53, all registered
+    (dict(lame=OTHER_LAME, names=("a.ns.somehost.net",)), "ns_registered"),
+    (dict(lame=OTHER_LAME, names=("ns1.gone-dns-zz9.com",), registered=False), "ns_unregistered"),
+    (dict(names=("ns-535.awsdns-02.net",), registered=registry.UNKNOWN), "registry_unchecked"),
+    (dict(parent_error=OSError("port 53 blocked")), "parent_unreachable"),
+    (dict(names=(), no_delegation=True), "delegation_elsewhere"),
+])
+def test_every_unclear_outcome_carries_its_reason_code(monkeypatch, case, reason):
+    """v0.7.2: every outcome but "fixed" is inconclusive, so the reason code is
+    what tells them apart (0x41 shows it next to the "?", kaidoku can use it)."""
+    fake(monkeypatch, **case)
+    v = verify.prove(item())
+    assert v.status == INCONCLUSIVE and v.reason == reason
+
+
+def test_a_fixed_delegation_needs_no_reason(monkeypatch):
+    fake(monkeypatch, lame=None)
+    assert verify.prove(item()).reason == ""

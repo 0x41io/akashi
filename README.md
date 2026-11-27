@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.7.1.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.7.2.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -127,6 +127,13 @@ out not to exist. Akashi is built the other way around.
 >
 > v0.7.1 pins [mønømi](https://github.com/0x41io/monomi) v1.29.2 (BBOT import, every own server
 > checked on Shodan InternetDB, OpenSearch endpoints graded stale), so the suite installs together.
+>
+> v0.7.2 pins mønømi v1.29.3. Registry (RDAP) lookups are paced, about one a second per registry, and a rate limit waits as
+> long as the registry asks (up to 30 seconds, twice) before giving up. A vet with five Route 53
+> delegations asks about 20 awsdns domains, and one was left "couldn't be checked" before.
+> A broken delegation's verdict also carries a reason code (`pooled_registered`, `ns_registered`,
+> `ns_unregistered`, `registry_unchecked`, `parent_unreachable`, `delegation_elsewhere`), since every
+> outcome but "fixed" is inconclusive: the code tells them apart without reading the headline.
 
 ## What it proves
 

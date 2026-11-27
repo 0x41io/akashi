@@ -43,8 +43,16 @@ REGISTERED = "registered"
 NOT_FOUND = "not_found"
 UNKNOWN = "unknown"
 
-RATE_LIMIT_WAIT = 5     # seconds to wait after a 429, at most, before the one retry
+# v0.7.2: a vet with five Route 53 delegations asks ~20 different awsdns
+# domains, most of them at one registry (.net, .com), and one retry after 5s
+# wasn't enough (np.internal.de: "couldn't be checked for awsdns-16.net").
+# Now each registry is paced, and a 429 waits as long as RDAP asks.
+PACE = 1.0              # seconds between first asks to the same registry (TLD)
+RATE_LIMIT_WAIT = 5     # wait after a 429 with no usable Retry-After; doubles on the next
+MAX_WAIT = 30           # never wait longer than this for one retry, whatever Retry-After says
+RETRIES = 2             # retries after a 429, so at most 3 asks per domain
 _seen = {}              # domain -> (status, evidence), so a run asks each domain once
+_last_ask = {}          # TLD -> time.monotonic() of the last first-ask to it
 
 
 def registrable(name: str) -> str:
@@ -58,22 +66,43 @@ def _ask(domain: str):
                         headers={"User-Agent": USER_AGENT}, allow_redirects=True)
 
 
+def _pace(domain: str) -> None:
+    """Wait until PACE seconds have passed since the last ask to this domain's
+    registry (its TLD: one registry runs each), so a run doesn't trip it."""
+    tld = domain.rsplit(".", 1)[-1]
+    last = _last_ask.get(tld)
+    if last is not None:
+        gap = last + PACE - time.monotonic()
+        if gap > 0:
+            time.sleep(gap)
+    _last_ask[tld] = time.monotonic()
+
+
+def _retry_wait(resp, attempt: int) -> float:
+    """How long to wait after a 429: RDAP's Retry-After when it gives seconds,
+    else RATE_LIMIT_WAIT doubling per attempt; never above MAX_WAIT."""
+    try:
+        wait = float(resp.headers.get("Retry-After"))
+    except (TypeError, ValueError):
+        wait = RATE_LIMIT_WAIT * (2 ** attempt)
+    return min(max(wait, 0), MAX_WAIT)
+
+
 def registration(domain: str) -> tuple[str, str]:
     """(status, evidence) for a registrable domain: REGISTERED only when RDAP
     positively says so, NOT_FOUND for its "no active registration" (404),
     UNKNOWN when it couldn't be checked. Never "free". Each domain is asked
-    once per run; a 429 (too many requests) waits once, as RDAP asks, up to
-    RATE_LIMIT_WAIT seconds, and tries again."""
+    once per run, paced per registry (v0.7.2); a 429 (too many requests)
+    waits as RDAP asks (up to MAX_WAIT) and tries again, RETRIES times."""
     if domain in _seen:
         return _seen[domain]
     try:
+        _pace(domain)
         resp = _ask(domain)
-        if resp.status_code == 429:
-            try:
-                wait = min(float(resp.headers.get("Retry-After", RATE_LIMIT_WAIT)), RATE_LIMIT_WAIT)
-            except ValueError:
-                wait = RATE_LIMIT_WAIT
-            time.sleep(max(wait, 0))
+        for attempt in range(RETRIES):
+            if resp.status_code != 429:
+                break
+            time.sleep(_retry_wait(resp, attempt))
             resp = _ask(domain)
     except requests.RequestException as e:
         return UNKNOWN, f"RDAP lookup failed for {domain}: {e}"   # not cached: a retry may work
@@ -83,7 +112,8 @@ def registration(domain: str) -> tuple[str, str]:
         out = (NOT_FOUND, f"RDAP has no active registration for {domain} (HTTP 404) — but 404 can also "
                           "mean the TLD has no RDAP service, so verify by hand before treating it as claimable")
     elif resp.status_code == 429:
-        return UNKNOWN, f"RDAP rate-limited the lookup for {domain} (HTTP 429), even after waiting; can't say"
+        return UNKNOWN, (f"RDAP rate-limited the lookup for {domain} (HTTP 429), even after {RETRIES} "
+                         "waits; can't say")
     else:
         out = (UNKNOWN, f"RDAP returned HTTP {resp.status_code} for {domain}; can't say")
     _seen[domain] = out

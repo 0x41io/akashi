@@ -35,7 +35,8 @@ import dns.resolver
 from monomi import common, dnscheck, takeover
 
 from akashi.proofs import registry
-from akashi.verdict import INCONCLUSIVE, RULED_OUT, Verdict
+from akashi.verdict import (DELEGATION_ELSEWHERE, INCONCLUSIVE, NS_REGISTERED, NS_UNREGISTERED,
+                            PARENT_UNREACHABLE, POOLED_REGISTERED, REGISTRY_UNCHECKED, RULED_OUT, Verdict)
 
 QUERY_TIMEOUT = 5  # seconds for the one direct query
 
@@ -131,7 +132,8 @@ def prove(item: dict) -> Verdict:
         on = f" ({pool})" if pool else ""
         return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
                        f"{cut} is still a broken delegation{on}, but its exact nameservers couldn't "
-                       "be learned from the parent zone; check them by hand (dig +trace)", ev, now)
+                       "be learned from the parent zone; check them by hand (dig +trace)", ev, now,
+                       reason=PARENT_UNREACHABLE)
     names, zone = answer["names"], cut
     said = ", ".join(names) if names else "no NS records"
     if not names and answer["via"]:
@@ -143,7 +145,7 @@ def prove(item: dict) -> Verdict:
                else "names no nameservers for it")
         return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
                        f"{cut} still fails, but the parent zone's nameserver ({server}) {why}; the break "
-                       "may sit elsewhere: check by hand (dig +trace)", ev, now)
+                       "may sit elsewhere: check by hand (dig +trace)", ev, now, reason=DELEGATION_ELSEWHERE)
     higher = f" (the delegation sits higher, at {zone})" if zone != cut else ""
 
     # 3. can those nameservers be had?
@@ -171,17 +173,17 @@ def prove(item: dict) -> Verdict:
         return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
                        f"{zone} is delegated to {ns}{higher}, and no registration was found for {domain}: "
                        f"if it's free, whoever registers it answers DNS for every name under {zone}. "
-                       "Confirm by hand before treating it as claimable", ev, now)
+                       "Confirm by hand before treating it as claimable", ev, now, reason=NS_UNREGISTERED)
     if unchecked:
         return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
                        f"{zone} is still delegated to {', '.join(names[:4])}{who}{higher}, but the registry "
                        f"couldn't be checked for {', '.join(sorted(set(unchecked)))}; run it again later",
-                       ev, now)
+                       ev, now, reason=REGISTRY_UNCHECKED)
     if grade == "theoretical" or "AWS Route 53" in runs:
-        why = ("Route 53 assigns nameservers from a large pool, so getting this exact set again "
-               "is impractical")
+        why, code = ("Route 53 assigns nameservers from a large pool, so getting this exact set again "
+                     "is impractical"), POOLED_REGISTERED
     else:
-        why = "whether that DNS service lets anyone recreate the zone wasn't checked"
+        why, code = "whether that DNS service lets anyone recreate the zone wasn't checked", NS_REGISTERED
     return Verdict(item["id"], "dangling_ns", INCONCLUSIVE,
                    f"{zone} is still delegated to {', '.join(names[:4])}{who}{higher}, every one on a "
-                   f"registered domain, so it can't be had by registering one; {why}", ev, now)
+                   f"registered domain, so it can't be had by registering one; {why}", ev, now, reason=code)

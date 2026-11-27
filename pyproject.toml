@@ -16,7 +16,7 @@ authors = [{ name = "0x41" }]
 requires-python = ">=3.14"
 dynamic = ["version"]
 dependencies = [
-    "monomi @ git+https://github.com/0x41io/monomi@v1.29.2",
+    "monomi @ git+https://github.com/0x41io/monomi@v1.29.3",
     # registrable-domain extraction (Public Suffix List) for the registry check;
     # pinned to its bundled snapshot at runtime so it never fetches
     "tldextract>=5",

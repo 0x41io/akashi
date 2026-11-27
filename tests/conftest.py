@@ -15,11 +15,14 @@ T = "2026-11-08T12:00:00+00:00"
 @pytest.fixture(autouse=True)
 def fresh_registry_cache():
     """registry.registration() remembers each domain for the run (v0.7.0):
-    every test starts with an empty memory, so no answer leaks between tests."""
+    every test starts with an empty memory, so no answer leaks between tests.
+    The pacing clock too (v0.7.2), so no test waits for another's ask."""
     from akashi.proofs import registry
     registry._seen.clear()
+    registry._last_ask.clear()
     yield
     registry._seen.clear()
+    registry._last_ask.clear()
 
 
 @pytest.fixture(autouse=True)
