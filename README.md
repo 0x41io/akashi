@@ -37,7 +37,7 @@ out not to exist. Akashi is built the other way around.
 - **A fix isn't done until it's re-checked.** `recheck` runs the same check
   again and records fixed, still open, or unclear.
 
-> Status: **v0.7.3.** The full **prove, fix, re-check** loop is built: `plan`
+> Status: **v0.7.4.** The full **prove, fix, re-check** loop is built: `plan`
 > (show what would be checked, send nothing), `verify` (run the checks after a
 > typed yes), and `recheck` (re-run a confirmed lead after you fix it, to prove
 > it's closed). The passive checks (the takeover re-check over DNS, the registry
@@ -136,6 +136,8 @@ out not to exist. Akashi is built the other way around.
 > outcome but "fixed" is inconclusive: the code tells them apart without reading the headline.
 >
 > v0.7.3 pins mønømi v1.29.4 (API Gateway and ServiceNow servers are no longer read as the target's own).
+>
+> v0.7.4 pins mønømi v1.30.0 (a server named only through another domain's CNAME is "likely a vendor's platform" everywhere; the target's own network and DNS-only steering like Akamai GTM keep a server the target's, so around-the-CDN leads can list those servers as origins).
 
 ## What it proves
 
